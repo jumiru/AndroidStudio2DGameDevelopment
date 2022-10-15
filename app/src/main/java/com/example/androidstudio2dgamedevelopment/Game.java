@@ -5,7 +5,6 @@ import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
-import android.view.View;
 
 import androidx.annotation.NonNull;
 import androidx.core.content.ContextCompat;
@@ -15,8 +14,8 @@ import androidx.core.content.ContextCompat;
  * and renders all objects to the screen
  */
 public class Game extends SurfaceView implements SurfaceHolder.Callback  {
+    private GameBoard gameBoard;
     private GameLoop gameLoop;
-    private Context context;
 
     public Game(Context context) {
         super(context);
@@ -25,7 +24,7 @@ public class Game extends SurfaceView implements SurfaceHolder.Callback  {
         SurfaceHolder surfaceHolder = getHolder();
         surfaceHolder.addCallback(this);
 
-        this.context = context;
+        gameBoard = new GameBoard( getContext(), 5, 7);
         gameLoop = new GameLoop(this, surfaceHolder);
 
         setFocusable( true );
@@ -50,14 +49,16 @@ public class Game extends SurfaceView implements SurfaceHolder.Callback  {
     @Override
     public void draw(Canvas canvas) {
         super.draw(canvas);
-        drawUPS(canvas);
-        drawFPS(canvas);
+
+        gameBoard.draw(canvas);
+        //drawUPS(canvas);
+        //drawFPS(canvas);
     }
 
     public void drawUPS( Canvas canvas) {
         String averageUPS = Double.toString(gameLoop.getAverageUPS());
         Paint paint = new Paint();
-        int color = ContextCompat.getColor(context, R.color.orange);
+        int color = ContextCompat.getColor(getContext(), R.color.orange);
         paint.setColor(color);
         paint.setTextSize(50);
         canvas.drawText("UPS: " + averageUPS, 100, 80, paint);
@@ -66,12 +67,13 @@ public class Game extends SurfaceView implements SurfaceHolder.Callback  {
     public void drawFPS( Canvas canvas) {
         String averageFPS = Double.toString(gameLoop.getAverageFPS());
         Paint paint = new Paint();
-        int color = ContextCompat.getColor(context, R.color.orange);
+        int color = ContextCompat.getColor(getContext(), R.color.orange);
         paint.setColor(color);
         paint.setTextSize(50);
         canvas.drawText("FPS: " + averageFPS, 100, 140, paint);
     }
 
     public void update() {
+        gameBoard.update();
     }
 }
