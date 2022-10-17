@@ -67,6 +67,21 @@ public class GameBoardArray {
         return gameBoardContent[x][y];
     }
 
+    public void set(int x, int y, int val) {
+        if (x<0) {
+            x = 0;
+        }
+        else if (x>=width) {
+            x = width-1;
+        }
+        if (y<0) {
+            y = 0;
+        }
+        else if ( y>= height) {
+            y = height-1;
+        }
+        gameBoardContent[x][y] = val;
+    }
 
 
     public String getText(int x, int y) {
