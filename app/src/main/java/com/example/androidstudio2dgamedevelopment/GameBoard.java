@@ -7,15 +7,24 @@ import android.graphics.Rect;
 
 import androidx.core.content.ContextCompat;
 
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.List;
 import java.util.Random;
+import java.util.Set;
 
 public class GameBoard {
 
-    private static final int RECT_BOARDER = 8;
+    private static final int RECT_BOARDER = 12;
     private static final float TEXT_HEIGHT = 100.0f;
-    private static final int STATUS_FIELD_HEIGHT = 200 ;
-    private static final int MOTION_STEPS = 15;
-
+    private static final int STATUS_FIELD_HEIGHT = 300 ;
+    private static final int STATUS_TEXT_SIZE = 80;
+    private static final int MOTION_STEPS = 10;
+    private List<directionT> motionPath;
+    private boolean addedNewCells;
+    private boolean merging;
+    private Set<Coord> mergeGroup;
+    private boolean motionFinished;
 
     public enum directionT {
         UP, DOWN, LEFT, RIGHT
@@ -48,6 +57,18 @@ public class GameBoard {
     private int motionIncrementX;
     private int motionIncrementY;
 
+    private int startPositionX;
+    private int startPositionY;
+    private int startCellValue;
+    private boolean startPositionSelected;
+
+    private int targetPositionX;
+    private int targetPositionY;
+    private int targetCellValue;
+
+    private String statusMessage;
+    private Paint statusPaint;
+
     private Random rand;
 
     public GameBoard(Context context, int width, int height) {
@@ -60,19 +81,19 @@ public class GameBoard {
         textPaint.setTextSize(TEXT_HEIGHT);
 
         gameBoardArray = new GameBoardArray(width, height);
-        gameBoardArray.randomInit(10 );
+        gameBoardArray.initCells(4 );
+        addedNewCells = true;
 
         rectArray = new Rect[width][height ];
         paintArray = new Paint[width][height];
-        for ( int y = 0; y < height; y++) {
-            for ( int x =0; x<width; x++) {
-                paintArray[x][y] = new Paint();
-                paintArray[x][y].setColor(getColor(x,y));
-            }
-        }
-        motionPaint = new Paint();
 
-        rand = new Random();
+        motionPaint = new Paint();
+        statusPaint = new Paint();
+        statusPaint.setColor(ContextCompat.getColor(context, R.color.status));
+        statusPaint.setTextSize(STATUS_TEXT_SIZE);
+        statusMessage = "---";
+        rand = new Random(0);
+        motionPath = new ArrayList<>();
     }
 
     private int getColor(int x, int y) {
@@ -80,7 +101,7 @@ public class GameBoard {
         if ( val == 0 ) {
             return getColor(0xff, 0x90, 0x90, 0x90);
         } else {
-            return getColor( 0xff, 0xff-99*val, 0x90 + 77*val, 0x00 + 99*val);
+            return getColor( 0xff, 0xff-23*val, 0x90 + 77*val, 0x00 + 99*val);
         }
     }
 
@@ -100,6 +121,10 @@ public class GameBoard {
                 if (rectArray[x][y] == null) {
                     rectArray[x][y] = getRect(x,y);
                 }
+                if (paintArray[x][y]==null) {
+                    paintArray[x][y] = new Paint();
+                }
+                paintArray[x][y].setColor(getColor(x,y));
                 drawCell(canvas, rectArray[x][y], paintArray[x][y], gameBoardArray.getText(x,y));
             }
         }
@@ -107,6 +132,10 @@ public class GameBoard {
         if (inMotion) {
             drawCell(canvas, motionRect, motionPaint, motionText);
         }
+
+        canvas.drawText(statusMessage, 20, canvasHeight-STATUS_FIELD_HEIGHT/2, statusPaint );
+        canvas.drawCircle(20,canvasHeight-20, 10, motionPaint);
+        canvas.drawCircle(80,canvasHeight-20, 10, statusPaint);
     }
 
     private void drawCell(Canvas canvas, Rect rect, Paint paint, String text) {
@@ -149,11 +178,58 @@ public class GameBoard {
                 inMotion = false;
             } else {
                 motionRect.left = motionRect.left+motionIncrementX;
+                motionRect.right = motionRect.right+motionIncrementX;
                 motionRect.bottom = motionRect.bottom+motionIncrementY;
+                motionRect.top = motionRect.top + motionIncrementY;
             }
-        } else {
-            randomMove();
         }
+
+        if (!inMotion) {
+            if (!motionPath.isEmpty()) {
+                directionT dir = motionPath.get(motionPath.size()-1);
+                motionPath.remove(motionPath.size()-1);
+                if (motionPath.size()==0) {
+                    motionFinished = true;
+                }
+                if ( dir == directionT.LEFT) {
+                    moveLeft(startPositionX, startPositionY);
+                    startPositionX--;
+                } else if (dir==directionT.DOWN) {
+                    moveDown(startPositionX, startPositionY);
+                    startPositionY++;
+                } else if (dir==directionT.RIGHT) {
+                    moveRight(startPositionX,startPositionY);
+                    startPositionX++;
+                } else if (dir==directionT.UP) {
+                    moveUp(startPositionX, startPositionY);
+                    startPositionY--;
+                }
+
+            } else if (merging) {
+                Iterator<Coord> it = mergeGroup.iterator();
+                while (it.hasNext()) {
+                    Coord c = it.next();
+                    gameBoardArray.set(c.x,c.y,0);
+                }
+                gameBoardArray.set(targetPositionX, targetPositionY, gameBoardArrayValueAfterMotion+2);
+                merging = false;
+            } else if (motionFinished){
+                motionFinished = false;
+                mergeGroup = merge(targetPositionX, targetPositionY);
+                if (mergeGroup.size()>=4) {
+                    merging = true;
+                }
+
+                if (!addedNewCells && !merging) {
+                    gameBoardArray.randomlyAddCells(3,4);
+                    addedNewCells = true;
+                }
+            }
+        }
+    }
+
+    private Set<Coord> merge(int x, int y) {
+        return gameBoardArray.findMergeGroup(x,y);
     }
 
     private boolean reachedFinalPosition() {
@@ -188,7 +264,7 @@ public class GameBoard {
 
     private void moveDown(int x, int y) {
         if (!inMotion) {
-            if (x > 0 && gameBoardArray.get(x,y+1) == 0 && gameBoardArray.get(x,y) != 0) {
+            if (x < height-1 && gameBoardArray.get(x,y+1) == 0 && gameBoardArray.get(x,y) != 0) {
                 applyCommonMotionSettings(x,y, x, y+1);
                 motionDir = directionT.DOWN;
             }
@@ -206,7 +282,7 @@ public class GameBoard {
 
     private void moveRight(int x, int y) {
         if (!inMotion) {
-            if (x > 0 && gameBoardArray.get(x+1,y) == 0 && gameBoardArray.get(x,y) != 0) {
+            if (x<width-1 && gameBoardArray.get(x+1,y) == 0 && gameBoardArray.get(x,y) != 0) {
                 applyCommonMotionSettings(x,y, x+1, y);
                 motionDir = directionT.RIGHT;
             }
@@ -237,5 +313,71 @@ public class GameBoard {
         motionIncrementX = (finalPosition.left-motionRect.left) / MOTION_STEPS;
         motionIncrementY = (finalPosition.bottom-motionRect.bottom) / MOTION_STEPS;
 
+    }
+
+    public void onTouchEvent(int x, int y) {
+
+        int indexX = (int)(x / cellWidth);
+        int indexY = (int)(y / cellHeight);
+
+        if ( !inMotion && !merging ) {
+            if (indexY < height ) {
+                statusMessage = "--- " + Integer.toString(indexX) + " / " + Integer.toString(indexY);
+                int cellValue = gameBoardArray.get(indexX, indexY);
+                int oldCellValue = gameBoardArray.get(startPositionX, startPositionY);
+                boolean cellValuesMatch = (cellValue == oldCellValue);
+
+                if (!startPositionSelected && cellValue != 0) {
+                    // first start cell selection
+                    startPositionSelected = true;
+                    startPositionX = indexX;
+                    startPositionY = indexY;
+                    highlightCell(startPositionX, startPositionY);
+                } else if (startPositionSelected && cellValue != 0) {
+                    // reset start position selection
+                    resetCell(startPositionX, startPositionY);
+
+
+                    startPositionSelected = false;
+                } else if (startPositionSelected) {
+
+                    targetPositionX = indexX;
+                    targetPositionY = indexY;
+
+                    // find path
+                    motionPath = gameBoardArray.findPath(startPositionX, startPositionY, targetPositionX, targetPositionY);
+                    resetCell(startPositionX, startPositionY);
+                    if (!motionPath.isEmpty()) {
+                        addedNewCells = false;
+                        // move cell to target position (in update method)
+                        startPositionSelected = false;
+                    }
+                }
+            }
+        }
+    }
+
+    public void resetCell(int x, int y) {
+        paintArray[x][y].setAlpha(0xFF);
+        rectArray[x][y].left =
+                rectArray[x][y].left - RECT_BOARDER/2;
+        rectArray[x][y].right =
+                rectArray[x][y].right + RECT_BOARDER/2;
+        rectArray[x][y].top =
+                rectArray[x][y].top - RECT_BOARDER/2;
+        rectArray[x][y].bottom =
+                rectArray[x][y].bottom + RECT_BOARDER/2;
+    }
+
+    public void highlightCell(int x, int y) {
+        paintArray[x][y].setAlpha(0x80);
+        rectArray[x][y].left =
+                rectArray[x][y].left + RECT_BOARDER/2;
+        rectArray[x][y].right =
+                rectArray[x][y].right - RECT_BOARDER/2;
+        rectArray[x][y].top =
+                rectArray[x][y].top + RECT_BOARDER/2;
+        rectArray[x][y].bottom =
+                rectArray[x][y].bottom - RECT_BOARDER/2;
     }
 }

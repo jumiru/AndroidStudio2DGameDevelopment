@@ -3,6 +3,7 @@ package com.example.androidstudio2dgamedevelopment;
 import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.Paint;
+import android.view.MotionEvent;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
 
@@ -45,6 +46,20 @@ public class Game extends SurfaceView implements SurfaceHolder.Callback  {
     public void surfaceDestroyed(@NonNull SurfaceHolder holder) {
 
     }
+
+    @Override
+    public boolean onTouchEvent(MotionEvent event) {
+
+        switch (event.getAction()) {
+            case MotionEvent.ACTION_DOWN:
+                gameBoard.onTouchEvent((int)event.getX(), (int)event.getY());
+                return true;
+        }
+
+        return super.onTouchEvent(event);
+    }
+
+
 
     @Override
     public void draw(Canvas canvas) {
