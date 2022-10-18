@@ -17,18 +17,24 @@ public class GameBoard {
 
     private static final int RECT_BOARDER = 12;
     private static final float TEXT_HEIGHT = 100.0f;
-    private static final int STATUS_FIELD_HEIGHT = 300 ;
+    private static final int STATUS_FIELD_HEIGHT = 500 ;
     private static final int STATUS_TEXT_SIZE = 80;
     private static final int MOTION_STEPS = 10;
+    private static final int DROP_INS_AFTER_MOTION = 3;
     private List<directionT> motionPath;
-    private boolean addedNewCells;
-    private boolean merging;
     private Set<Coord> mergeGroup;
-    private boolean motionFinished;
+    private boolean invalidPath;
 
     public enum directionT {
         UP, DOWN, LEFT, RIGHT
     }
+
+    public enum statusT {
+        SELECT_START_POSITION, SELECT_TARGET_POSITION,
+        MOTION, MERGE, DROP_IN_NEW_CELLS, GAME_OVER
+    }
+
+    private statusT status;
 
     private Context context;
     private int height;
@@ -45,12 +51,12 @@ public class GameBoard {
     private float cellHeight;
 
     // store information while one cell is in motion
-    private boolean inMotion;
     private directionT motionDir;
     private Rect motionRect;
     private Paint motionPaint;
     private String motionText;
     private Rect finalPosition;
+    private Paint redPaint;
     private int xAfterMotion;
     private int yAfterMotion;
     private int gameBoardArrayValueAfterMotion;
@@ -59,17 +65,21 @@ public class GameBoard {
 
     private int startPositionX;
     private int startPositionY;
-    private int startCellValue;
-    private boolean startPositionSelected;
+
 
     private int targetPositionX;
     private int targetPositionY;
-    private int targetCellValue;
 
     private String statusMessage;
     private Paint statusPaint;
 
     private Random rand;
+    private int score;
+    private int highScore;
+
+
+    private boolean firstStatusMotionEntry;
+    private int dropInCount;
 
     public GameBoard(Context context, int width, int height) {
         this.width = width;
@@ -81,8 +91,6 @@ public class GameBoard {
         textPaint.setTextSize(TEXT_HEIGHT);
 
         gameBoardArray = new GameBoardArray(width, height);
-        gameBoardArray.initCells(4 );
-        addedNewCells = true;
 
         rectArray = new Rect[width][height ];
         paintArray = new Paint[width][height];
@@ -91,17 +99,30 @@ public class GameBoard {
         statusPaint = new Paint();
         statusPaint.setColor(ContextCompat.getColor(context, R.color.status));
         statusPaint.setTextSize(STATUS_TEXT_SIZE);
-        statusMessage = "---";
+
         rand = new Random(0);
         motionPath = new ArrayList<>();
+        redPaint = new Paint();
+        redPaint.setColor(0xffff0000);
+
+        gameInit();
+
+    }
+
+    private void gameInit() {
+        gameBoardArray.clear();
+        gameBoardArray.initCells(4 );
+        status = statusT.SELECT_START_POSITION;
+        firstStatusMotionEntry = true;
+        score = 0;
     }
 
     private int getColor(int x, int y) {
         int val = gameBoardArray.get(x,y);
-        if ( val == 0 ) {
+        if ( val == -1 ) {
             return getColor(0xff, 0x90, 0x90, 0x90);
         } else {
-            return getColor( 0xff, 0xff-23*val, 0x90 + 77*val, 0x00 + 99*val);
+            return getColor( 0xff, 0xff-63*val, 0x90 + 71*val, 0x00 + 43*val);
         }
     }
 
@@ -116,6 +137,10 @@ public class GameBoard {
         canvasHeight = canvas.getHeight();
         cellWidth = canvasWidth / width;
         cellHeight = (canvasHeight - STATUS_FIELD_HEIGHT ) / height;
+
+        if (invalidPath) {
+            canvas.drawRect(0,0, width-1, height-1, redPaint);
+        }
         for ( int y =0; y<height; y++ ) {
             for (int x = 0; x < width; x++) {
                 if (rectArray[x][y] == null) {
@@ -129,13 +154,14 @@ public class GameBoard {
             }
         }
 
-        if (inMotion) {
+        if (status == statusT.MOTION && motionRect!=null) {
             drawCell(canvas, motionRect, motionPaint, motionText);
         }
 
-        canvas.drawText(statusMessage, 20, canvasHeight-STATUS_FIELD_HEIGHT/2, statusPaint );
-        canvas.drawCircle(20,canvasHeight-20, 10, motionPaint);
-        canvas.drawCircle(80,canvasHeight-20, 10, statusPaint);
+        String scoreText = "score: " + Integer.toString(score) + "   (" + Integer.toString(highScore)+")";
+        canvas.drawText(statusMessage, 20, canvasHeight-STATUS_TEXT_SIZE, statusPaint );
+        canvas.drawText(scoreText, 20, canvasHeight-3*(STATUS_TEXT_SIZE-20), statusPaint );
+        canvas.drawCircle(20,canvasHeight-20, 10, paintArray[startPositionX][startPositionY]);
     }
 
     private void drawCell(Canvas canvas, Rect rect, Paint paint, String text) {
@@ -171,136 +197,150 @@ public class GameBoard {
     }
 
     public void update() {
-        if (inMotion) {
-            if ( reachedFinalPosition()) {
-                gameBoardArray.set(xAfterMotion,yAfterMotion,gameBoardArrayValueAfterMotion);
-                paintArray[xAfterMotion][yAfterMotion].setColor(motionPaint.getColor());
-                inMotion = false;
+        if (status == statusT.SELECT_START_POSITION) {
+            statusMessage = "Select start position";
+            // handeled by onTouchEvent
+        }
+
+
+        else if (status == statusT.SELECT_TARGET_POSITION) {
+            statusMessage = "Select target position";
+            // handeled by onTouchEvent
+        }
+
+
+        else if (status == statusT.MOTION) {
+            statusMessage = "Motion";
+            if (reachedPathPosition() || firstStatusMotionEntry) {
+                if ( !firstStatusMotionEntry) {
+                    gameBoardArray.set(xAfterMotion, yAfterMotion, gameBoardArrayValueAfterMotion);
+                    paintArray[xAfterMotion][yAfterMotion].setColor(motionPaint.getColor());
+                }
+                firstStatusMotionEntry = false;
+                if (!motionPath.isEmpty()) {
+                    directionT dir = motionPath.get(motionPath.size() - 1);
+                    motionPath.remove(motionPath.size() - 1);
+                    if (dir == directionT.LEFT) {
+                        moveLeft(startPositionX, startPositionY);
+                        startPositionX--;
+                    } else if (dir == directionT.DOWN) {
+                        moveDown(startPositionX, startPositionY);
+                        startPositionY++;
+                    } else if (dir == directionT.RIGHT) {
+                        moveRight(startPositionX, startPositionY);
+                        startPositionX++;
+                    } else if (dir == directionT.UP) {
+                        moveUp(startPositionX, startPositionY);
+                        startPositionY--;
+                    }
+
+                } else {
+                    status = statusT.MERGE;
+                    firstStatusMotionEntry = true;
+                    dropInCount = DROP_INS_AFTER_MOTION;
+                }
             } else {
-                motionRect.left = motionRect.left+motionIncrementX;
-                motionRect.right = motionRect.right+motionIncrementX;
-                motionRect.bottom = motionRect.bottom+motionIncrementY;
+                motionRect.left = motionRect.left + motionIncrementX;
+                motionRect.right = motionRect.right + motionIncrementX;
+                motionRect.bottom = motionRect.bottom + motionIncrementY;
                 motionRect.top = motionRect.top + motionIncrementY;
             }
         }
 
-        if (!inMotion) {
-            if (!motionPath.isEmpty()) {
-                directionT dir = motionPath.get(motionPath.size()-1);
-                motionPath.remove(motionPath.size()-1);
-                if (motionPath.size()==0) {
-                    motionFinished = true;
-                }
-                if ( dir == directionT.LEFT) {
-                    moveLeft(startPositionX, startPositionY);
-                    startPositionX--;
-                } else if (dir==directionT.DOWN) {
-                    moveDown(startPositionX, startPositionY);
-                    startPositionY++;
-                } else if (dir==directionT.RIGHT) {
-                    moveRight(startPositionX,startPositionY);
-                    startPositionX++;
-                } else if (dir==directionT.UP) {
-                    moveUp(startPositionX, startPositionY);
-                    startPositionY--;
-                }
 
-            } else if (merging) {
+        else if (status == statusT.MERGE) {
+            statusMessage = "Merge";
+            mergeGroup = merge(targetPositionX, targetPositionY);
+            if (mergeGroup.size() >= 4) {
                 Iterator<Coord> it = mergeGroup.iterator();
                 while (it.hasNext()) {
                     Coord c = it.next();
-                    gameBoardArray.set(c.x,c.y,0);
+                    gameBoardArray.set(c.x, c.y, -1);
                 }
-                gameBoardArray.set(targetPositionX, targetPositionY, gameBoardArrayValueAfterMotion+2);
-                merging = false;
-            } else if (motionFinished){
-                motionFinished = false;
-                mergeGroup = merge(targetPositionX, targetPositionY);
-                if (mergeGroup.size()>=4) {
-                    merging = true;
-                }
-
-                if (!addedNewCells && !merging) {
-                    gameBoardArray.randomlyAddCells(3,4);
-                    addedNewCells = true;
+                gameBoardArray.set(targetPositionX, targetPositionY, gameBoardArrayValueAfterMotion + 2);
+                score += (1<<(gameBoardArrayValueAfterMotion + 2)) * (mergeGroup.size()-3);
+                if (score>highScore) {
+                    highScore = score;
                 }
             }
+            int freeCells = gameBoardArray.getNumFreeCells();
+            if (freeCells == 0) {
+                status = statusT.GAME_OVER;
+            } else {
+                status = statusT.DROP_IN_NEW_CELLS;
+            }
         }
+
+
+
+        else if (status == statusT.DROP_IN_NEW_CELLS) {
+            if (dropInCount>0) {
+                statusMessage = "Drop in new cells";
+
+                Coord c = gameBoardArray.randomlyAddCell(3);
+                dropInCount--;
+                targetPositionX = c.x;
+                targetPositionY = c.y;
+                status = statusT.MERGE;
+            } else {
+                status = statusT.SELECT_START_POSITION;
+            }
+        }
+
+        else if (status == statusT.GAME_OVER) {
+            statusMessage = "GAME OVER!";
+        }
+
     }
 
     private Set<Coord> merge(int x, int y) {
         return gameBoardArray.findMergeGroup(x,y);
     }
 
-    private boolean reachedFinalPosition() {
+    private boolean reachedPathPosition() {
 
         boolean res = false;
-        if ( inMotion && (
-                (motionDir == directionT.LEFT && motionRect.left <= finalPosition.left) ||
+        if ((motionDir == directionT.LEFT && motionRect.left <= finalPosition.left) ||
                         (motionDir == directionT.RIGHT && motionRect.left >= finalPosition.left) ||
                         (motionDir == directionT.UP && motionRect.bottom <= finalPosition.bottom) ||
                         (motionDir == directionT.DOWN && motionRect.bottom >= finalPosition.bottom)
-                )
             ) {
             res = true;
         }
         return res;
     }
 
-    private void randomMove() {
-        int x = rand.nextInt(width);
-        int y = rand.nextInt(height);
-        int dir = rand.nextInt(4);
-        if ( dir == 0) {
-            moveLeft(x,y);
-        } else if (dir == 1) {
-            moveRight(x,y);
-        } else if (dir == 2) {
-            moveUp(x,y);
-        } else {
-            moveDown(x,y);
-        }
-    }
 
     private void moveDown(int x, int y) {
-        if (!inMotion) {
-            if (x < height-1 && gameBoardArray.get(x,y+1) == 0 && gameBoardArray.get(x,y) != 0) {
-                applyCommonMotionSettings(x,y, x, y+1);
-                motionDir = directionT.DOWN;
-            }
+        if (y < height-1 && gameBoardArray.get(x,y+1) == -1 && gameBoardArray.get(x,y) != -1) {
+            applyCommonMotionSettings(x,y, x, y+1);
+            motionDir = directionT.DOWN;
         }
     }
 
     private void moveUp(int x, int y) {
-        if (!inMotion) {
-            if (x > 0 && gameBoardArray.get(x,y-1) == 0 && gameBoardArray.get(x,y) != 0) {
-                applyCommonMotionSettings(x,y, x, y-1);
-                motionDir = directionT.UP;
-            }
+        if (y > 0 && gameBoardArray.get(x,y-1) == -1 && gameBoardArray.get(x,y) != -1) {
+            applyCommonMotionSettings(x,y, x, y-1);
+            motionDir = directionT.UP;
         }
     }
 
     private void moveRight(int x, int y) {
-        if (!inMotion) {
-            if (x<width-1 && gameBoardArray.get(x+1,y) == 0 && gameBoardArray.get(x,y) != 0) {
-                applyCommonMotionSettings(x,y, x+1, y);
-                motionDir = directionT.RIGHT;
-            }
+        if (x<width-1 && gameBoardArray.get(x+1,y) == -1 && gameBoardArray.get(x,y) != -1) {
+            applyCommonMotionSettings(x,y, x+1, y);
+            motionDir = directionT.RIGHT;
         }
     }
 
     // move the content of cell x,y one position to the left
     public void moveLeft(int x, int y) {
-        if (!inMotion) {
-            if (x > 0 && gameBoardArray.get(x-1,y) == 0 && gameBoardArray.get(x,y) != 0) {
-                applyCommonMotionSettings(x,y, x-1, y);
-                motionDir = directionT.LEFT;
-            }
+        if (x > 0 && gameBoardArray.get(x-1,y) == -1 && gameBoardArray.get(x,y) != -1) {
+            applyCommonMotionSettings(x,y, x-1, y);
+            motionDir = directionT.LEFT;
         }
     }
 
     public void applyCommonMotionSettings(int x, int y, int newX, int newY) {
-        inMotion = true;
         motionRect = getRect(x,y);
         motionPaint.setColor(paintArray[x][y].getColor());
         motionText = gameBoardArray.getText(x,y);
@@ -308,7 +348,7 @@ public class GameBoard {
         gameBoardArrayValueAfterMotion = gameBoardArray.get(x,y);
         xAfterMotion = newX;
         yAfterMotion = newY;
-        gameBoardArray.set(x,y,0);
+        gameBoardArray.set(x,y,-1);
         paintArray[x][y].setColor(getColor(x,y));
         motionIncrementX = (finalPosition.left-motionRect.left) / MOTION_STEPS;
         motionIncrementY = (finalPosition.bottom-motionRect.bottom) / MOTION_STEPS;
@@ -320,39 +360,48 @@ public class GameBoard {
         int indexX = (int)(x / cellWidth);
         int indexY = (int)(y / cellHeight);
 
-        if ( !inMotion && !merging ) {
-            if (indexY < height ) {
-                statusMessage = "--- " + Integer.toString(indexX) + " / " + Integer.toString(indexY);
-                int cellValue = gameBoardArray.get(indexX, indexY);
-                int oldCellValue = gameBoardArray.get(startPositionX, startPositionY);
-                boolean cellValuesMatch = (cellValue == oldCellValue);
+        statusMessage = "--- " + Integer.toString(indexX) + " / " + Integer.toString(indexY);
 
-                if (!startPositionSelected && cellValue != 0) {
-                    // first start cell selection
-                    startPositionSelected = true;
+        if ( status == statusT.SELECT_START_POSITION ) {
+            if (indexY < height) {
+                int cellValue = gameBoardArray.get(indexX, indexY);
+
+                if (cellValue != -1) {
+                    // start cell selection
                     startPositionX = indexX;
                     startPositionY = indexY;
                     highlightCell(startPositionX, startPositionY);
-                } else if (startPositionSelected && cellValue != 0) {
-                    // reset start position selection
+                    status = statusT.SELECT_TARGET_POSITION;
+                }
+            }
+        } else if (status == statusT.SELECT_TARGET_POSITION) {
+            if (indexY < height) {
+                int cellValue = gameBoardArray.get(indexX, indexY);
+
+                if (cellValue!=-1) {
+                    //selected new start position
                     resetCell(startPositionX, startPositionY);
-
-
-                    startPositionSelected = false;
-                } else if (startPositionSelected) {
-
+                    // start cell selection
+                    startPositionX = indexX;
+                    startPositionY = indexY;
+                    highlightCell(startPositionX, startPositionY);
+                    status = statusT.SELECT_TARGET_POSITION;
+                } else {
                     targetPositionX = indexX;
                     targetPositionY = indexY;
-
-                    // find path
+                    // find path from start to target
                     motionPath = gameBoardArray.findPath(startPositionX, startPositionY, targetPositionX, targetPositionY);
-                    resetCell(startPositionX, startPositionY);
                     if (!motionPath.isEmpty()) {
-                        addedNewCells = false;
-                        // move cell to target position (in update method)
-                        startPositionSelected = false;
+                        resetCell(startPositionX, startPositionY);
+                        status = statusT.MOTION;
+                    } else {
+                        invalidPath = true;
                     }
                 }
+            }
+        } else if (status == statusT.GAME_OVER) {
+            if ( indexY >= height ) {
+                gameInit();
             }
         }
     }

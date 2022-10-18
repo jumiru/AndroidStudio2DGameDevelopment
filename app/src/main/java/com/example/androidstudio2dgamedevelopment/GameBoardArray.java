@@ -33,9 +33,13 @@ public class GameBoardArray {
 
         gameBoardContent = new int[width][height];
         searchBoard = new int[width][height];
+        clear();
+    }
+
+    public void clear() {
         for ( int y =0; y<height; y++ ) {
             for ( int x=0; x<width; x++) {
-                gameBoardContent[x][y]=0; // 0 means empty
+                gameBoardContent[x][y]=-1; // 0 means empty
                 searchBoard[x][y] = 0;
             }
         }
@@ -49,46 +53,38 @@ public class GameBoardArray {
         if (numFields > freeCells) {
             numFields = freeCells;
         }
-        int index = 1;
+        int index = 0;
         for (int field = 0; field < numFields; field++) {
             int x = 0;
             int y = 0;
             do {
                 x = rand.nextInt(width);
                 y = rand.nextInt(height);
-            } while (gameBoardContent[x][y]!=0);
+            } while (!isFree(x,y));
             gameBoardContent[x][y] = index;
             index++;
         }
     }
 
-    public void randomlyAddCells(int numFields, int maxIndex ) {
+    public Coord randomlyAddCell(int maxIndex ) {
         int index = 0;
-        int freeCells = getNumFreeCells();
-        if (numFields > width * height) {
-            numFields = width*height;
-        }
-        if (numFields > freeCells) {
-            numFields = freeCells;
-        }
 
-        for (int field = 0; field < numFields; field++) {
-            int x = 0;
-            int y = 0;
-            do {
-                x = rand.nextInt(width);
-                y = rand.nextInt(height);
-                index = rand.nextInt(maxIndex-1)+1;
-            } while (gameBoardContent[x][y]!=0);
-            gameBoardContent[x][y] = index;
-        }
+        int x = 0;
+        int y = 0;
+        do {
+            x = rand.nextInt(width);
+            y = rand.nextInt(height);
+            index = rand.nextInt(maxIndex+1);
+        } while (!isFree(x,y));
+        gameBoardContent[x][y] = index;
+        return new Coord(x,y);
     }
 
-    private int getNumFreeCells() {
+    public int getNumFreeCells() {
         int freeCells = 0;
         for ( int y =0; y<height; y++ ) {
             for (int x = 0; x < width; x++) {
-                if (gameBoardContent[x][y] == 0) {
+                if (isFree(x,y)) {
                     freeCells++;
                 }
             }
@@ -132,10 +128,26 @@ public class GameBoardArray {
         gameBoardContent[x][y] = val;
     }
 
+    public boolean isFree(int x, int y) {
+
+        if (x<0) {
+            return false;
+        }
+        else if (x>=width) {
+            return false;
+        }
+        if (y<0) {
+            return false;
+        }
+        else if ( y>= height) {
+            return false;
+        }
+        return (gameBoardContent[x][y] == -1);
+    }
 
     public String getText(int x, int y) {
         int val = get(x,y);
-        if ( val == 0) {
+        if ( val == -1) {
             return "";
         } else if (val < 10) {
             return Integer.toString(1<<val);
@@ -186,7 +198,7 @@ public class GameBoardArray {
         GameBoard.directionT dir = GameBoard.directionT.LEFT;
 
         //find min in all directions
-        // since we are searching backwards, we have to flop the direction in search path!!!
+        // since we are searching backwards, we have to flip the direction in search path!!!
         if ( x>0 ) {
             if (searchBoard[x-1][y] < min ) {
                 min = searchBoard[x-1][y];
@@ -243,28 +255,28 @@ public class GameBoardArray {
             } else {
 
                 //try left
-                if (x >= 1 && (gameBoardContent[x - 1][y] == 0) && (searchBoard[x - 1][y] > depth)) {
+                if (x >= 1 && (gameBoardContent[x - 1][y] == -1) && (searchBoard[x - 1][y] > depth)) {
                     Coord c = new Coord(x - 1, y);
                     newFront.add(c);
                     searchBoard[x - 1][y] = depth;
                 }
 
                 // try right
-                if (x < (width - 1) && (gameBoardContent[x + 1][y] == 0) && (searchBoard[x + 1][y] > depth)) {
+                if (x < (width - 1) && (gameBoardContent[x + 1][y] == -1) && (searchBoard[x + 1][y] > depth)) {
                     Coord c = new Coord(x + 1, y);
                     newFront.add(c);
                     searchBoard[x + 1][y] = depth;
                 }
 
                 //try up
-                if (y > 1 && (gameBoardContent[x][y - 1] == 0) && (searchBoard[x][y - 1] > depth)) {
+                if (y >= 1 && (gameBoardContent[x][y - 1] == -1) && (searchBoard[x][y - 1] > depth)) {
                     Coord c = new Coord(x, y - 1);
                     newFront.add(c);
                     searchBoard[x][y - 1] = depth;
                 }
 
                 //try down
-                if (y < height - 1 && (gameBoardContent[x][y + 1] == 0) && (searchBoard[x][y + 1] > depth)) {
+                if (y < (height - 1) && (gameBoardContent[x][y + 1] == -1) && (searchBoard[x][y + 1] > depth)) {
                     Coord c = new Coord(x, y + 1);
                     newFront.add(c);
                     searchBoard[x][y + 1] = depth;
@@ -281,10 +293,6 @@ public class GameBoardArray {
         return true;
     }
 
-
-    public boolean merge() {
-        return false;
-    }
 
     public Set<Coord> findMergeGroup(int x, int y) {
         int mergeValue = gameBoardContent[x][y];
@@ -333,4 +341,6 @@ public class GameBoardArray {
             }
         }
     }
+
+
 }
