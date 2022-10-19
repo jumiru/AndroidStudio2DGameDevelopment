@@ -29,7 +29,7 @@ public class GameBoardArray {
         }
         this.width = width;
         this.height = height;
-        rand = new Random(0);
+        rand = new Random();
 
         gameBoardContent = new int[width][height];
         searchBoard = new int[width][height];
@@ -46,24 +46,49 @@ public class GameBoardArray {
     }
 
     public void initCells(int numFields ) {
-        int freeCells = getNumFreeCells();
-        if (numFields > width * height) {
-            numFields = width*height;
+
+
+        if (numFields==-1) {
+            initCellsForDebugging();
+        } else {
+            int freeCells = getNumFreeCells();
+            if (numFields > freeCells) {
+                numFields = freeCells;
+            }
+            int index = 0;
+            for (int field = 0; field < numFields; field++) {
+                int x = 0;
+                int y = 0;
+                do {
+                    x = rand.nextInt(width);
+                    y = rand.nextInt(height);
+                } while (!isFree(x,y));
+                gameBoardContent[x][y] = index;
+                index++;
+            }
         }
-        if (numFields > freeCells) {
-            numFields = freeCells;
+    }
+
+    public void initCellsForDebugging() {
+        int[][] a = {
+         {  -1,  1,  2,  3,  4 },
+         {  5,  6,  7,  8,  9 },
+         { -1, -1, -1, -1, -1 },
+         { -1, -1, -1,  0, -1 },
+         { -1, -1, -1, -1, -1 },
+         { -1, -1, -1, -1, -1 },
+         { -1, -1, -1, -1, -1 }};
+
+        int c = 0;
+        for ( int y =0; y<height; y++ ) {
+            for ( int x=0; x<width; x++) {
+                gameBoardContent[x][y]=a[y][x];
+                gameBoardContent[x][y] = c;
+                c++;
+            }
         }
-        int index = 0;
-        for (int field = 0; field < numFields; field++) {
-            int x = 0;
-            int y = 0;
-            do {
-                x = rand.nextInt(width);
-                y = rand.nextInt(height);
-            } while (!isFree(x,y));
-            gameBoardContent[x][y] = index;
-            index++;
-        }
+
+
     }
 
     public Coord randomlyAddCell(int maxIndex ) {
@@ -155,6 +180,8 @@ public class GameBoardArray {
             return Integer.toString(1<<(val-10)) + "k";
         } else if (val < 30 ) {
             return Integer.toString(1<<(val-20)) + "M";
+        } else if (val < 40 ) {
+            return Integer.toString(1<<(val-30)) + "G";
         }
         return "";
     }

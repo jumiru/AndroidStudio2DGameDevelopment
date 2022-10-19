@@ -91,4 +91,8 @@ public class Game extends SurfaceView implements SurfaceHolder.Callback  {
     public void update() {
         gameBoard.update();
     }
+
+    public void storeState() {
+        gameBoard.storeState();
+    }
 }

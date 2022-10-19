@@ -11,6 +11,8 @@ import android.view.WindowManager;
  */
 public class MainActivity extends AppCompatActivity {
 
+    Game game;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
 
@@ -24,6 +26,13 @@ public class MainActivity extends AppCompatActivity {
         );
 
         // set content view to game so that objects of the game can be rendered to the screen
-        setContentView(new Game(this));
+        game = new Game(this);
+        setContentView(game);
+    }
+
+    @Override
+    protected void onStop() {
+        super.onStop();
+        game.storeState();
     }
 }
