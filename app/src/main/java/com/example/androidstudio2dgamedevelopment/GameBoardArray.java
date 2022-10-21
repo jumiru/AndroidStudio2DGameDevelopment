@@ -16,8 +16,12 @@ public class GameBoardArray {
     private int height;
 
     private int gameBoardContent[][];
+    private int gameBoardBackup[][];
     private int searchBoard[][];
     private Random rand;
+
+    private boolean gameBoardModified;
+    private boolean triggerBackupBeforeNextModification;
 
 
     public GameBoardArray(int width, int height) {
@@ -32,6 +36,7 @@ public class GameBoardArray {
         rand = new Random();
 
         gameBoardContent = new int[width][height];
+        gameBoardBackup = new int[width][height];
         searchBoard = new int[width][height];
         clear();
     }
@@ -39,7 +44,7 @@ public class GameBoardArray {
     public void clear() {
         for ( int y =0; y<height; y++ ) {
             for ( int x=0; x<width; x++) {
-                gameBoardContent[x][y]=-1; // 0 means empty
+                set(x,y,-1); // 0 means empty
                 searchBoard[x][y] = 0;
             }
         }
@@ -63,7 +68,7 @@ public class GameBoardArray {
                     x = rand.nextInt(width);
                     y = rand.nextInt(height);
                 } while (!isFree(x,y));
-                gameBoardContent[x][y] = index;
+                set(x,y,index);
                 index++;
             }
         }
@@ -79,19 +84,15 @@ public class GameBoardArray {
          { -1, -1, -1, -1, -1 },
          { -1, -1, -1, -1, -1 }};
 
-        int c = 0;
+
         for ( int y =0; y<height; y++ ) {
             for ( int x=0; x<width; x++) {
-                gameBoardContent[x][y]=a[y][x];
-                gameBoardContent[x][y] = c;
-                c++;
+                set(x,y,a[y][x]);
             }
         }
-
-
     }
 
-    public Coord randomlyAddCell(int maxIndex ) {
+    public Coord randomlyAddCell(int minIndex, int maxIndex) {
         int index = 0;
 
         int x = 0;
@@ -99,9 +100,9 @@ public class GameBoardArray {
         do {
             x = rand.nextInt(width);
             y = rand.nextInt(height);
-            index = rand.nextInt(maxIndex+1);
+            index = rand.nextInt(maxIndex-minIndex+1) + minIndex;
         } while (!isFree(x,y));
-        gameBoardContent[x][y] = index;
+        set(x,y, index);
         return new Coord(x,y);
     }
 
@@ -150,7 +151,14 @@ public class GameBoardArray {
         else if ( y>= height) {
             y = height-1;
         }
+
+        if (triggerBackupBeforeNextModification) {
+            backupCurrentGameBoard();
+            triggerBackupBeforeNextModification = false;
+        }
+
         gameBoardContent[x][y] = val;
+        gameBoardModified = true;
     }
 
     public boolean isFree(int x, int y) {
@@ -186,7 +194,7 @@ public class GameBoardArray {
         return "";
     }
 
-    public List<GameBoard.directionT> findPath(int startPositionX, int startPositionY, int targetPositionX, int targetPositionY) {
+    public List<GameBoard.directionT> findPath(int startPositionX, int startPositionY, int targetPositionX, int targetPositionY, boolean allowTargetPosCollision ) {
         //clone field for BFS
         for ( int y =0; y<height; y++ ) {
             for (int x = 0; x < width; x++) {
@@ -200,15 +208,26 @@ public class GameBoardArray {
         List<Coord> startList = new ArrayList<Coord>();
         startList.add(new Coord(startPositionX,startPositionY));
 
+        int tempTargetValue = get(targetPositionX, targetPositionY);
+        if (allowTargetPosCollision) {
+            set(targetPositionX, targetPositionY, -1);
+        }
+
         boolean pathExists = buildSearchBoard(startList, target, 0);
+
+
         List<GameBoard.directionT> path;
         if (pathExists) {
             path = findShortestPath(target, start);
         } else {
             path = new ArrayList<>(); // empty path indicates that target is not reachable
         }
-        return path;
 
+        if (allowTargetPosCollision) {
+            set(targetPositionX, targetPositionY, tempTargetValue);
+        }
+
+        return path;
     }
 
     private List<GameBoard.directionT> findShortestPath(Coord pos, Coord start) {
@@ -370,4 +389,28 @@ public class GameBoardArray {
     }
 
 
+    public void backupCurrentGameBoard() {
+        if (gameBoardModified) {
+            for ( int y =0; y<height; y++ ) {
+                for (int x = 0; x < width; x++) {
+                    gameBoardBackup[x][y] = gameBoardContent[x][y];
+                }
+            }
+        }
+    }
+
+    public void unrollBackup() {
+        if (gameBoardModified) {
+            gameBoardModified = false;
+            for ( int y =0; y<height; y++ ) {
+                for (int x = 0; x < width; x++) {
+                    gameBoardContent[x][y] = gameBoardBackup[x][y];
+                }
+            }
+        }
+    }
+
+    public void backupGameBoardWithNextModification() {
+        triggerBackupBeforeNextModification = true;
+    }
 }

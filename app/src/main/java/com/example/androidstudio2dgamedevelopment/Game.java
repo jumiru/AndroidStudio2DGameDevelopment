@@ -1,14 +1,18 @@
 package com.example.androidstudio2dgamedevelopment;
 
 import android.content.Context;
+import android.content.SharedPreferences;
 import android.graphics.Canvas;
 import android.graphics.Paint;
+import android.util.Log;
 import android.view.MotionEvent;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
 
 import androidx.annotation.NonNull;
 import androidx.core.content.ContextCompat;
+
+import java.util.prefs.Preferences;
 
 /**
  * Game manages all objects in the game and is responsible for updating all states
@@ -18,33 +22,33 @@ public class Game extends SurfaceView implements SurfaceHolder.Callback  {
     private GameBoard gameBoard;
     private GameLoop gameLoop;
 
-    public Game(Context context) {
+    public Game(Context context, SharedPreferences prefs) {
         super(context);
 
         //getSurfaceHolder and add callback method
         SurfaceHolder surfaceHolder = getHolder();
         surfaceHolder.addCallback(this);
 
-        gameBoard = new GameBoard( getContext(), 5, 7);
-        gameLoop = new GameLoop(this, surfaceHolder);
+        gameBoard = new GameBoard( getContext(),  prefs);
 
         setFocusable( true );
     }
 
     @Override
     public void surfaceCreated(@NonNull SurfaceHolder holder) {
+        Log.d("Game()", "surfaceCreated()");
+        gameLoop = new GameLoop(this, holder);
         gameLoop.startLoop();
-
     }
 
     @Override
     public void surfaceChanged(@NonNull SurfaceHolder holder, int format, int width, int height) {
-
+        Log.d("Game()", "surfaceChanged()");
     }
 
     @Override
     public void surfaceDestroyed(@NonNull SurfaceHolder holder) {
-
+        Log.d("Game()", "surfaceDestroyed()");
     }
 
     @Override
@@ -92,7 +96,7 @@ public class Game extends SurfaceView implements SurfaceHolder.Callback  {
         gameBoard.update();
     }
 
-    public void storeState() {
-        gameBoard.storeState();
+    public void pause() {
+        gameLoop.stopLoop();
     }
 }

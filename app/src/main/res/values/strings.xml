@@ -1,3 +1,4 @@
 <resources>
     <string name="app_name">2048 NextGen!</string>
+    <string name="preference_file_key">Preferences2048NextGen</string>
 </resources>
