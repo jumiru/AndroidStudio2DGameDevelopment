@@ -76,13 +76,13 @@ public class GameBoardArray {
 
     public void initCellsForDebugging() {
         int[][] a = {
-         {  -1,  1,  2,  3,  4 },
-         {  5,  6,  7,  8,  9 },
-         { -1, -1, -1, -1, -1 },
-         { -1, -1, -1,  0, -1 },
-         { -1, -1, -1, -1, -1 },
-         { -1, -1, -1, -1, -1 },
-         { -1, -1, -1, -1, -1 }};
+         { -1,  1,  2, -1, -1 },
+         { -1,  1,  2, -1, -1 },
+         { -1,  1,  2, -1, -1 },
+         {  3,  2,  1,  4, -1 },
+         {  3,  2, -1, -1, -1 },
+         { -1,  1, -1,  4, -1 },
+         { -1,  2, -1,  4, -1 }};
 
 
         for ( int y =0; y<height; y++ ) {
@@ -178,21 +178,8 @@ public class GameBoardArray {
         return (gameBoardContent[x][y] == -1);
     }
 
-    public String getText(int x, int y) {
-        int val = get(x,y);
-        if ( val == -1) {
-            return "";
-        } else if (val < 10) {
-            return Integer.toString(1<<val);
-        } else if (val < 20 ) {
-            return Integer.toString(1<<(val-10)) + "k";
-        } else if (val < 30 ) {
-            return Integer.toString(1<<(val-20)) + "M";
-        } else if (val < 40 ) {
-            return Integer.toString(1<<(val-30)) + "G";
-        }
-        return "";
-    }
+
+
 
     public List<GameBoard.directionT> findPath(int startPositionX, int startPositionY, int targetPositionX, int targetPositionY, boolean allowTargetPosCollision ) {
         //clone field for BFS
@@ -412,5 +399,15 @@ public class GameBoardArray {
 
     public void backupGameBoardWithNextModification() {
         triggerBackupBeforeNextModification = true;
+    }
+
+    public void removeAllCellsSmallerThan(int level) {
+        for ( int y =0; y<height; y++ ) {
+            for (int x = 0; x < width; x++) {
+                if (gameBoardContent[x][y] < level - 1) {
+                    set(x, y, -1);
+                }
+            }
+        }
     }
 }
