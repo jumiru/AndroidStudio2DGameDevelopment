@@ -1197,13 +1197,13 @@ public class GameBoard {
         } else if (val < (1l<<20)) {
             return Long.toString(val);
         } else if (val < (1l<<30)) {
-            return Long.toString(val - (1l<<10)) + "k";
+            return Long.toString(val >> 10) + "k";
         } else if (val < (1l<<40)) {
-            return Long.toString(val - (1l<<20)) + "M";
+            return Long.toString(val >> 20) + "M";
         } else if (val < (1l<<50)) {
-            return Long.toString(val - (1l<<30)) + "G";
+            return Long.toString(val >> 30) + "G";
         } else if (val < (1l<<60)) {
-            return Long.toString(val - (1l<<40)) + "T";
+            return Long.toString(val >> 40) + "T";
         }
         return "";
 
