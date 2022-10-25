@@ -28,15 +28,118 @@ public class GameBoard {
     private static int MERGE_ANIMATION_TIME = 30;
     private static int SELECTION_PULSE_TIME = 4;
     private static int SELECTION_PULSE_WIDTH = 8;
-    private List<directionT> motionPath;
-    private Set<Coord> mergeGroup;
-    private int gameOverAnimationCounter;
-    private int gameOverAnimationPhase;
-    private Rect gameOverRect;
-    private Paint gameOverPaint;
-    private Paint gameOverTextPaint;
-    private String gameOverText = "game over!";
 
+
+
+    public enum directionT {
+        UP, DOWN, LEFT, RIGHT
+    }
+
+    public enum statusT {
+        SELECT_START_POSITION, SELECT_TARGET_POSITION,
+        MOTION, MERGE, DROP_IN_NEW_CELLS, GAME_OVER
+    }
+
+    private statusT status;
+
+    private Context context;
+    private int height;
+    private int width;
+    private Paint paintArray[][];
+    private Rect rectArray[][];
+    private GameBoardArray gameBoardArray;
+
+    // general dimension information
+    private int canvasWidth;
+    private int canvasHeight;
+    private float cellWidth;
+    private float cellHeight;
+    private float rectWidth;
+    private float rectHeight;
+    
+    
+    SharedPreferences prefs;
+    private Random rand;
+    private int colorArray[];
+    
+    // scoring
+    private long score;
+    private int level;
+    private long highScore;
+    private boolean highscoreExceeded;
+    private int nextScoreForBonus;
+    private Paint textPaint; //numbers on the cells
+    private Paint scoreAndLevelPaint; // score and level text
+    
+    private int alertAnimationCounter; //activated if user selects invalid path
+    
+    private String levelText;
+    private int levelAnimationCounter;
+    private Paint levelAnimationPaint;
+
+
+    // counter for dropping in new cells after motion
+    private int dropInCount;
+    
+    // drop in animation
+    private boolean dropInAnimationRunning;
+    private int dropInAnimationCounter;
+    private int dropInValue;
+    private Rect dropInRect;
+    private float dropInAdderX;
+    private float dropInAdderY;
+    private Paint dropInAnimationPaint;
+
+    // cell pulsing while selected
+    private int selectionPulseCounter;
+    private int selectionWidth;
+    private int selectionPulseDirection;
+    private Rect originalSelectedRect;
+    
+    
+    // store information while one cell is in motion
+    private List<directionT> motionPath;
+    private directionT motionDir;
+    private Rect motionRect;
+    private Paint motionPaint;
+    private String motionText;
+    private Rect finalPosition;
+    private Paint redPaint;
+    private int xAfterMotion;
+    private int yAfterMotion;
+    private int gameBoardArrayValueAfterMotion;
+    private float motionIncrementX;
+    private float motionIncrementY;
+    private float offsetX;
+    private float offsetY;
+    private int startPositionX;
+    private int startPositionY;
+    private float startFloatPosX;
+    private float startFloatPosY;
+    private int targetPositionX;
+    private int targetPositionY;
+    private boolean startMotion;
+    
+    
+    // fields used for merging
+    private Set<Coord> mergeGroup;
+    private int mergeAnimationStep;
+    private Rect mergeRects[];
+    private float mergeIncrementsX[];
+    private float mergeIncrementsY[];
+    private int numMergeRects;
+    private Paint mergePaint;
+    private String mergeText;
+
+    // bonus actions
+    private int bonusIconBoarder;
+    private int bonusIconWidth;
+    
+    private int animateBonusCounter;
+    private int bonusWin;
+    private Rect bonusWinRect;
+    private Drawable bonusWinDrawable;
+    
     private Rect undoRect;
     private Rect swapRect;
     private Rect jumpRect;
@@ -64,107 +167,10 @@ public class GameBoard {
     private String jumpText;
     private String delRowText;
     private String delColText;
-    private int animateBonusCounter;
-    private int bonusWin;
-    private Rect bonusWinRect;
-    private Drawable bonusWinDrawable;
-    private List<directionT> inverseMotionPath;
-    private int swap2ndMergePositionX;
-    private int swap2ndMergePositionY;
-    private int level;
-    private int levelAnimationCounter;
-    private String levelText;
-    private Paint levelAnimationPaint;
-    private boolean dropInAnimationRunning;
-    private int dropInAnimationCounter;
-    private int dropInValue;
-    private Rect dropInRect;
-    private float dropInAdderX;
-    private float dropInAdderY;
-    private Paint dropInAnimationPaint;
 
-
-    public enum directionT {
-        UP, DOWN, LEFT, RIGHT
-    }
-
-    public enum statusT {
-        SELECT_START_POSITION, SELECT_TARGET_POSITION,
-        MOTION, MERGE, DROP_IN_NEW_CELLS, GAME_OVER
-    }
-
-    private statusT status;
-
-    private Context context;
-    private int height;
-    private int width;
-    private Paint paintArray[][];
-    private Rect rectArray[][];
-    private Paint textPaint;
-    private GameBoardArray gameBoardArray;
-
-    // general dimension information
-    private int canvasWidth;
-    private int canvasHeight;
-    private float cellWidth;
-    private float cellHeight;
-    private float rectWidth;
-    private float rectHeight;
-
-    // store information while one cell is in motion
-    private directionT motionDir;
-    private Rect motionRect;
-    private Paint motionPaint;
-    private String motionText;
-    private Rect finalPosition;
-    private Paint redPaint;
-    private int xAfterMotion;
-    private int yAfterMotion;
-    private int gameBoardArrayValueAfterMotion;
-    private float motionIncrementX;
-    private float motionIncrementY;
-    private float offsetX;
-    private float offsetY;
-
-    private int startPositionX;
-    private int startPositionY;
-    private float startFloatPosX;
-    private float startFloatPosY;
-
-
-    private int targetPositionX;
-    private int targetPositionY;
-    private Paint statusPaint;
-
-    private Random rand;
-    private long score;
-    private long highScore;
-    private boolean highscoreExceeded;
-    private int nextScoreForBonus;
-
-    private boolean firstStatusMotionEntry;
-    private int dropInCount;
-
-    private int alert;
-
-    private int mergeAnimationStep;
-    private Rect mergeRects[];
-    private float mergeIncrementsX[];
-    private float mergeIncrementsY[];
-    private int numMergeRects;
-    private Paint mergePaint;
-    private String mergeText;
-
-    private int selectionPulseCounter;
-    private int selectionWidth;
-    private int selectionPulseDirection;
-    private Rect originalSelectedRect;
-
-    private int colorArray[];
-    SharedPreferences prefs;
     private Paint bonusPaint;
-
-
+    
+    // swap bonus
     private Rect swapMotionRect;
     private Paint swapMotionPaint;
     private String swapMotionText;
@@ -180,7 +186,22 @@ public class GameBoard {
     private float swapStartFloatPosY;
     private int startSwapPositionX;
     private int startSwapPositionY;
+    private List<directionT> inverseMotionPath;
+    private int swap2ndMergePositionX;
+    private int swap2ndMergePositionY;
+    
+    // game over
+    private int gameOverAnimationCounter;
+    private int gameOverAnimationPhase;
+    private Rect gameOverRect;
+    private Paint gameOverPaint;
+    private Paint gameOverTextPaint;
+    private String gameOverText = "game over!";
 
+    
+    
+    
+    
     public GameBoard(Context context, SharedPreferences p) {
 
         this.prefs = p;
@@ -190,11 +211,9 @@ public class GameBoard {
         this.highScore = prefs.getLong("highscore", 0);
 
         updateBonusValues();
-
-
+        
         this.context = context;
-
-
+        
         textPaint = new Paint();
         textPaint.setColor(0xffffffff);
         textPaint.setTextSize(TEXT_HEIGHT);
@@ -206,9 +225,9 @@ public class GameBoard {
 
         motionPaint = new Paint();
         swapMotionPaint = new Paint();
-        statusPaint = new Paint();
-        statusPaint.setColor(ContextCompat.getColor(context, R.color.status));
-        statusPaint.setTextSize(STATUS_TEXT_SIZE);
+        scoreAndLevelPaint = new Paint();
+        scoreAndLevelPaint.setColor(ContextCompat.getColor(context, R.color.status));
+        scoreAndLevelPaint.setTextSize(STATUS_TEXT_SIZE);
 
         levelAnimationPaint = new Paint();
         levelAnimationPaint.setColor(0xffffffff);
@@ -219,6 +238,7 @@ public class GameBoard {
         redPaint = new Paint();
         redPaint.setColor(0xffff0000);
 
+        // the colors are generated by a pseudo random generator with fixed seed
         Random crand = new Random(44);
         colorArray = new int[40];
         for (int i = 0; i < 40; i++) {
@@ -237,7 +257,7 @@ public class GameBoard {
         gameBoardArray.clear();
         gameBoardArray.initCells(4);
         status = statusT.SELECT_START_POSITION;
-        firstStatusMotionEntry = true;
+        startMotion = true;
         score = 0;
         nextScoreForBonus = 256;
         highscoreExceeded = false;
@@ -274,6 +294,7 @@ public class GameBoard {
 
     public void draw(Canvas canvas) {
 
+        // first time initializations
         if (canvasWidth == 0) {
             canvasWidth = canvas.getWidth();
             canvasHeight = canvas.getHeight();
@@ -281,64 +302,146 @@ public class GameBoard {
             cellHeight = (canvasHeight - STATUS_FIELD_HEIGHT) / height;
             rectWidth = cellWidth - 2.0f * RECT_BOARDER;
             rectHeight = cellHeight - 2.0f * RECT_BOARDER;
+            initBonusIcons();
         }
 
-
-        if (undoRect == null) {
-            int iconBoarder = 6 * RECT_BOARDER;
-            int iconWidth = (int) (cellWidth - 2 * iconBoarder);
-            int top = (int) (height * cellHeight + RECT_BOARDER);
-
-            int left = (int) (0 * cellWidth + iconBoarder);
-            undoRect = new Rect(left, top, left + iconWidth, top + iconWidth);
-
-            left = (int) (1 * cellWidth + iconBoarder);
-            swapRect = new Rect(left, top, left + iconWidth, top + iconWidth);
-
-            left = (int) (2 * cellWidth + iconBoarder);
-            jumpRect = new Rect(left, top, left + iconWidth, top + iconWidth);
-
-            left = (int) (3 * cellWidth + iconBoarder);
-            delRowRect = new Rect(left, top + 2 * RECT_BOARDER, left + iconWidth, top + iconWidth - 2 * RECT_BOARDER);
-
-            left = (int) (4 * cellWidth + iconBoarder);
-            delColRect = new Rect(left + 2 * RECT_BOARDER, top, left + iconWidth - 2 * RECT_BOARDER, top + iconWidth);
-
-            undo = context.getResources().getDrawable(R.drawable.undo_circle_icon, null);
-            undo.setBounds(undoRect);
-
-            swap = context.getResources().getDrawable(R.drawable.swap_icon, null);
-            swap.setBounds(swapRect);
-
-            jump = context.getResources().getDrawable(R.drawable.jump_icon, null);
-            jump.setBounds(jumpRect);
-
-            delRow = context.getResources().getDrawable(R.drawable.cross_icon, null);
-            delRow.setBounds(delRowRect);
-
-            delCol = context.getResources().getDrawable(R.drawable.cross_icon, null);
-            delCol.setBounds(delColRect);
-
-            bonusPaint = new Paint();
-            bonusPaint.setColor(0xffffffff);
-            bonusPaint.setTextSize(50);
-
+        if (alertAnimationCounter > 0) {
+            animateAlert(canvas);
         }
 
+        drawGameboard(canvas);
+        drawMotionRect(canvas);
+        drawMergeRects(canvas);
 
-        if (alert > 0) {
-            alert--;
-            int red = 0;
-            if (alert > ALERT_TIME / 2) {
-                red = ((ALERT_TIME - alert) + 1) * (150) / (ALERT_TIME / 2);
+        if (status == statusT.GAME_OVER) {
+            drawGameOverAnimation(canvas);
+        }
+
+        drawScoreAndLevelInfo(canvas);
+
+        if (undoSelected) {
+            highlightBonusSelection(undoRect, canvas);
+        } else if (swapSelected) {
+            highlightBonusSelection(swapRect, canvas);
+        } else if (jumpSelected) {
+            highlightBonusSelection(jumpRect, canvas);
+        } else if (delRowSelected) {
+            highlightBonusSelection(delRowRect, canvas);
+        } else if (delColSelected) {
+            highlightBonusSelection(delColRect, canvas);
+        }
+
+        drawBonusInformation(canvas);
+
+        if (levelAnimationCounter > 0) {
+            drawLevelAnimation(canvas);
+        } else if (animateBonusCounter > 0) {
+            drawBonusAnimation(canvas);
+        }
+
+        if (dropInAnimationRunning) {
+            drawDropInAnimation(canvas);
+        }
+    }
+
+    private void drawDropInAnimation(Canvas canvas) {
+        canvas.drawRect(dropInRect, dropInAnimationPaint);
+    }
+
+    private void drawBonusAnimation(Canvas canvas) {
+        bonusWinDrawable.setBounds(bonusWinRect);
+        bonusWinDrawable.draw(canvas);
+    }
+
+    private void drawLevelAnimation(Canvas canvas) {
+        levelAnimationPaint.setTextSize(3 * levelAnimationCounter);
+        canvas.drawText(levelText, getApproxXToCenterText(levelText, levelAnimationPaint, canvasWidth), canvasWidth / 2, levelAnimationPaint);
+    }
+
+    private void drawScoreAndLevelInfo(Canvas canvas) {
+        String scoreText = "score: " + getScoreText(score) + "   (" + getScoreText(highScore) + ")";
+        canvas.drawText(levelText, 20, canvasHeight - STATUS_TEXT_SIZE, scoreAndLevelPaint);
+        canvas.drawText(scoreText, 20, canvasHeight - 3 * (STATUS_TEXT_SIZE - 20), scoreAndLevelPaint);
+    }
+
+    private void drawBonusInformation(Canvas canvas) {
+        // draw bonus icons
+        undo.draw(canvas);
+        jump.draw(canvas);
+        swap.draw(canvas);
+        delRow.draw(canvas);
+        delCol.draw(canvas);
+
+        int offset = getApproxXToCenterText(undoText, bonusPaint, (int) cellWidth);
+        canvas.drawText(undoText, 0 * cellWidth + offset, height*cellHeight + bonusIconWidth + RECT_BOARDER + bonusPaint.getTextSize(), bonusPaint);
+
+        offset = getApproxXToCenterText(swapText, bonusPaint, (int) cellWidth);
+        canvas.drawText(swapText, 1 * cellWidth + offset, height*cellHeight + bonusIconWidth + RECT_BOARDER + bonusPaint.getTextSize(), bonusPaint);
+
+        offset = getApproxXToCenterText(jumpText, bonusPaint, (int) cellWidth);
+        canvas.drawText(jumpText, 2 * cellWidth + offset, height*cellHeight + bonusIconWidth + RECT_BOARDER + bonusPaint.getTextSize(), bonusPaint);
+
+        offset = getApproxXToCenterText(delRowText, bonusPaint, (int) cellWidth);
+        canvas.drawText(delRowText, 3 * cellWidth + offset, height*cellHeight + bonusIconWidth + RECT_BOARDER + bonusPaint.getTextSize(), bonusPaint);
+
+        offset = getApproxXToCenterText(delColText, bonusPaint, (int) cellWidth);
+        canvas.drawText(delColText, 4 * cellWidth + offset, height*cellHeight + bonusIconWidth + RECT_BOARDER + bonusPaint.getTextSize(), bonusPaint);
+    }
+
+    private void highlightBonusSelection(Rect bonusRect, Canvas canvas) {
+        Rect r = new Rect(bonusRect.left - RECT_BOARDER,
+                bonusRect.top - RECT_BOARDER,
+                bonusRect.right + RECT_BOARDER,
+                bonusRect.bottom + RECT_BOARDER
+        );
+        Paint p = new Paint();
+        p.setColor(0xff00aa33);
+        canvas.drawRect(r, p);
+    }
+
+    private void drawGameOverAnimation(Canvas canvas) {
+        if (gameOverAnimationPhase >= 1) {
+
+            if (gameOverAnimationPhase == 1) {
+                gameOverTextPaint.setColor(0xffffffff);
+
+                if (gameOverAnimationCounter < (canvasHeight - STATUS_FIELD_HEIGHT) / 2) {
+                    gameOverAnimationCounter += GAME_OVER_STEPS;
+                    gameOverRect.top = (canvasHeight - STATUS_FIELD_HEIGHT) / 2 - gameOverAnimationCounter;
+                    gameOverRect.bottom = (canvasHeight - STATUS_FIELD_HEIGHT) / 2 + gameOverAnimationCounter;
+                } else {
+                    gameOverAnimationPhase = 2;
+                    gameOverTextPaint.setColor(0xffffffff);
+                }
             } else {
-                red = alert * (150) / (ALERT_TIME / 2);
+                gameOverAnimationCounter += GAME_OVER_STEPS;
+                if (gameOverAnimationCounter > canvasWidth) {
+                    gameOverAnimationCounter = -((int) gameOverTextPaint.measureText(gameOverText));
+                }
             }
-            redPaint.setColor(getColor(0xFF, red, 0, 0));
-
-            canvas.drawRect(0, 0, canvasWidth - 1, canvasHeight - STATUS_FIELD_HEIGHT, redPaint);
+            canvas.drawRect(gameOverRect, gameOverPaint);
+            canvas.drawText(gameOverText, gameOverAnimationCounter, getTextPosY(gameOverRect, gameOverTextPaint), gameOverTextPaint);
         }
+    }
 
+    private void drawMergeRects(Canvas canvas) {
+        if (status == statusT.MERGE && mergeAnimationStep != 0) {
+            for (int i = 0; i < numMergeRects; i++) {
+                drawCell(canvas, mergeRects[i], mergePaint, mergeText);
+            }
+        }
+    }
+
+    private void drawMotionRect(Canvas canvas) {
+        if (status == statusT.MOTION && motionRect != null) {
+            drawCell(canvas, motionRect, motionPaint, motionText);
+            if (swapSelected) {
+                drawCell(canvas, swapMotionRect, swapMotionPaint, swapMotionText);
+            }
+        }
+    }
+
+    private void drawGameboard(Canvas canvas) {
         for (int y = 0; y < height; y++) {
             for (int x = 0; x < width; x++) {
                 if (rectArray[x][y] == null) {
@@ -351,135 +454,65 @@ public class GameBoard {
                 drawCell(canvas, rectArray[x][y], paintArray[x][y], getText(x, y));
             }
         }
+    }
 
-        if (status == statusT.MOTION && motionRect != null) {
-            drawCell(canvas, motionRect, motionPaint, motionText);
-            if (swapSelected) {
-                drawCell(canvas, swapMotionRect, swapMotionPaint, swapMotionText);
-            }
+    private void animateAlert(Canvas canvas) {
+        alertAnimationCounter--;
+        int red = 0;
+        if (alertAnimationCounter > ALERT_TIME / 2) {
+            red = ((ALERT_TIME - alertAnimationCounter) + 1) * (150) / (ALERT_TIME / 2);
+        } else {
+            red = alertAnimationCounter * (150) / (ALERT_TIME / 2);
         }
+        redPaint.setColor(getColor(0xFF, red, 0, 0));
 
-        if (status == statusT.MERGE && mergeAnimationStep != 0) {
-            for (int i = 0; i < numMergeRects; i++) {
-                drawCell(canvas, mergeRects[i], mergePaint, mergeText);
-            }
-        }
+        canvas.drawRect(0, 0, canvasWidth - 1, canvasHeight - STATUS_FIELD_HEIGHT, redPaint);
+    }
 
-        if (status == statusT.GAME_OVER) {
-            if (gameOverAnimationPhase >= 1) {
+    private void initBonusIcons() {
+        bonusIconBoarder = 6 * RECT_BOARDER;
+        bonusIconWidth = (int) (cellWidth - 2 * bonusIconBoarder);
+        int top = (int) (height * cellHeight + RECT_BOARDER);
 
-                if (gameOverAnimationPhase == 1) {
-                    gameOverTextPaint.setColor(0xffffffff);
+        int left = (int) (0 * cellWidth + bonusIconBoarder);
+        undoRect = new Rect(left, top, left + bonusIconWidth, top + bonusIconWidth);
 
-                    if (gameOverAnimationCounter < (canvasHeight - STATUS_FIELD_HEIGHT) / 2) {
-                        gameOverAnimationCounter += GAME_OVER_STEPS;
-                        gameOverRect.top = (canvasHeight - STATUS_FIELD_HEIGHT) / 2 - gameOverAnimationCounter;
-                        gameOverRect.bottom = (canvasHeight - STATUS_FIELD_HEIGHT) / 2 + gameOverAnimationCounter;
-                    } else {
-                        gameOverAnimationPhase = 2;
-                        gameOverTextPaint.setColor(0xffffffff);
-                    }
-                } else {
-                    gameOverAnimationCounter += GAME_OVER_STEPS;
-                    if (gameOverAnimationCounter > canvasWidth) {
-                        gameOverAnimationCounter = -((int) gameOverTextPaint.measureText(gameOverText));
-                    }
-                }
-                canvas.drawRect(gameOverRect, gameOverPaint);
-                canvas.drawText(gameOverText, gameOverAnimationCounter, getTextPosY(gameOverRect), gameOverTextPaint);
-            }
-        }
+        left = (int) (1 * cellWidth + bonusIconBoarder);
+        swapRect = new Rect(left, top, left + bonusIconWidth, top + bonusIconWidth);
 
-        String scoreText = "score: " + getScoreText(score) + "   (" + getScoreText(highScore) + ")";
-        canvas.drawText(levelText, 20, canvasHeight - STATUS_TEXT_SIZE, statusPaint);
-        canvas.drawText(scoreText, 20, canvasHeight - 3 * (STATUS_TEXT_SIZE - 20), statusPaint);
+        left = (int) (2 * cellWidth + bonusIconBoarder);
+        jumpRect = new Rect(left, top, left + bonusIconWidth, top + bonusIconWidth);
 
-        if (undoSelected) {
-            Rect r = new Rect(undoRect.left - RECT_BOARDER,
-                    undoRect.top - RECT_BOARDER,
-                    undoRect.right + RECT_BOARDER,
-                    undoRect.bottom + RECT_BOARDER
-            );
-            Paint p = new Paint();
-            p.setColor(0xff00aa33);
-            canvas.drawRect(r, p);
-        } else if (swapSelected) {
-            Rect r = new Rect(swapRect.left - RECT_BOARDER,
-                    swapRect.top - RECT_BOARDER,
-                    swapRect.right + RECT_BOARDER,
-                    swapRect.bottom + RECT_BOARDER
-            );
-            Paint p = new Paint();
-            p.setColor(0xff00aa33);
-            canvas.drawRect(r, p);
-        } else if (jumpSelected) {
-            Rect r = new Rect(jumpRect.left - RECT_BOARDER,
-                    jumpRect.top - RECT_BOARDER,
-                    jumpRect.right + RECT_BOARDER,
-                    jumpRect.bottom + RECT_BOARDER
-            );
-            Paint p = new Paint();
-            p.setColor(0xff00aa33);
-            canvas.drawRect(r, p);
-        } else if (delRowSelected) {
-            Rect r = new Rect(delRowRect.left - RECT_BOARDER,
-                    delRowRect.top - RECT_BOARDER,
-                    delRowRect.right + RECT_BOARDER,
-                    delRowRect.bottom + RECT_BOARDER
-            );
-            Paint p = new Paint();
-            p.setColor(0xff00aa33);
-            canvas.drawRect(r, p);
-        } else if (delColSelected) {
-            Rect r = new Rect(delColRect.left - RECT_BOARDER,
-                    delColRect.top - RECT_BOARDER,
-                    delColRect.right + RECT_BOARDER,
-                    delColRect.bottom + RECT_BOARDER
-            );
-            Paint p = new Paint();
-            p.setColor(0xff00aa33);
-            canvas.drawRect(r, p);
-        }
+        left = (int) (3 * cellWidth + bonusIconBoarder);
+        delRowRect = new Rect(left, top + 2 * RECT_BOARDER, left + bonusIconWidth, top + bonusIconWidth - 2 * RECT_BOARDER);
 
-        undo.draw(canvas);
-        jump.draw(canvas);
-        swap.draw(canvas);
-        delRow.draw(canvas);
-        delCol.draw(canvas);
+        left = (int) (4 * cellWidth + bonusIconBoarder);
+        delColRect = new Rect(left + 2 * RECT_BOARDER, top, left + bonusIconWidth - 2 * RECT_BOARDER, top + bonusIconWidth);
 
-        if (levelAnimationCounter > 0) {
-            levelAnimationPaint.setTextSize(3 * levelAnimationCounter);
-            canvas.drawText(levelText, getApproxXToCenterText(levelText, levelAnimationPaint, canvasWidth), canvasWidth / 2, levelAnimationPaint);
-        } else if (animateBonusCounter > 0) {
-            bonusWinDrawable.setBounds(bonusWinRect);
-            bonusWinDrawable.draw(canvas);
-        }
+        undo = context.getResources().getDrawable(R.drawable.undo_circle_icon, null);
+        undo.setBounds(undoRect);
 
+        swap = context.getResources().getDrawable(R.drawable.swap_icon, null);
+        swap.setBounds(swapRect);
 
-        int offset = getApproxXToCenterText(undoText, bonusPaint, (int) cellWidth);
-        canvas.drawText(undoText, 0 * cellWidth + offset, (height + 1) * cellHeight - 10 * RECT_BOARDER, bonusPaint);
+        jump = context.getResources().getDrawable(R.drawable.jump_icon, null);
+        jump.setBounds(jumpRect);
 
-        offset = getApproxXToCenterText(swapText, bonusPaint, (int) cellWidth);
-        canvas.drawText(swapText, 1 * cellWidth + offset, (height + 1) * cellHeight - 10 * RECT_BOARDER, bonusPaint);
+        delRow = context.getResources().getDrawable(R.drawable.cross_icon, null);
+        delRow.setBounds(delRowRect);
 
-        offset = getApproxXToCenterText(jumpText, bonusPaint, (int) cellWidth);
-        canvas.drawText(jumpText, 2 * cellWidth + offset, (height + 1) * cellHeight - 10 * RECT_BOARDER, bonusPaint);
+        delCol = context.getResources().getDrawable(R.drawable.cross_icon, null);
+        delCol.setBounds(delColRect);
 
-        offset = getApproxXToCenterText(delRowText, bonusPaint, (int) cellWidth);
-        canvas.drawText(delRowText, 3 * cellWidth + offset, (height + 1) * cellHeight - 10 * RECT_BOARDER, bonusPaint);
-
-        offset = getApproxXToCenterText(delColText, bonusPaint, (int) cellWidth);
-        canvas.drawText(delColText, 4 * cellWidth + offset, (height + 1) * cellHeight - 10 * RECT_BOARDER, bonusPaint);
-
-        if (dropInAnimationRunning) {
-            canvas.drawRect(dropInRect, dropInAnimationPaint);
-        }
+        bonusPaint = new Paint();
+        bonusPaint.setColor(0xffffffff);
+        bonusPaint.setTextSize(50);
     }
 
     private void drawCell(Canvas canvas, Rect rect, Paint paint, String text) {
         canvas.drawRect(rect, paint);
         textPaint.setTextSize(getTextSize(text));
-        canvas.drawText(text, getTextPosX(rect, text, textPaint), getTextPosY(rect), textPaint);
+        canvas.drawText(text, getTextPosX(rect, text, textPaint), getTextPosY(rect, textPaint), textPaint);
     }
 
     private float getTextSize(String text) {
@@ -488,15 +521,16 @@ public class GameBoard {
     }
 
 
-    private float getTextPosY(Rect rect) {
+    private float getTextPosY(Rect rect, Paint p) {
         float posY = rect.bottom;
-        return posY - ((rect.bottom - rect.top) / 2 - (TEXT_HEIGHT) / 2);
+        return posY - ((rect.bottom - rect.top) / 2 - (p.getTextSize()) / 2) - RECT_BOARDER;
     }
 
     private float getTextPosX(Rect rect, String text, Paint paint) {
         float posX = rect.left;
-        int offset = getApproxXToCenterText(text, paint, (int) cellWidth);
-        return posX + offset - RECT_BOARDER;
+        float thisCellWidth = rect.right - rect.left;
+        int offset = getApproxXToCenterText(text, paint, (int) thisCellWidth);
+        return posX + offset;
     }
 
     public static int getApproxXToCenterText(String text, Paint p, int widthToFitStringInto) {
@@ -516,174 +550,58 @@ public class GameBoard {
     }
 
     public void update() {
-
+        //-----------------------------------------------------
+        // general animation
         if (levelAnimationCounter > 0) {
             animateLevel();
         } else if (animateBonusCounter > 0) {
             animateBonusWin();
         }
 
+
+        //-----------------------------------------------------
         if (status == statusT.SELECT_START_POSITION) {
             // handeled by onTouchEvent
-            gameBoardArray.backupGameBoardWithNextModification();
-        } else if (status == statusT.SELECT_TARGET_POSITION) {
-            selectionPulseCounter--;
-            if (selectionPulseCounter == 0) {
-                rectArray[startPositionX][startPositionY].left += selectionPulseDirection;
-                rectArray[startPositionX][startPositionY].right -= selectionPulseDirection;
-                rectArray[startPositionX][startPositionY].top += selectionPulseDirection;
-                rectArray[startPositionX][startPositionY].bottom -= selectionPulseDirection;
-                selectionPulseCounter = SELECTION_PULSE_TIME;
+            gameBoardArray.backupGameBoardWithNextModification(); // used for undo bonus
+            
+        }
 
-                selectionWidth++;
-                if (selectionWidth == SELECTION_PULSE_WIDTH) {
-                    selectionWidth = 0;
-                    selectionPulseDirection *= -1;
-                }
-            }
-        } else if (status == statusT.MOTION) {
+
+        // -----------------------------------------------------
+        else if (status == statusT.SELECT_TARGET_POSITION) {
+            animateSelectionPulse();
+        }
+
+
+        // -----------------------------------------------------
+        else if (status == statusT.MOTION) {
             if (jumpSelected) {
-                if (reachedJumpTargetPosition()) {
-                    status = statusT.MERGE;
-                    firstStatusMotionEntry = true;
-                    dropInCount = 0;
-                    jumpSelected = false;
-                    jumpCounter--;
-                    gameBoardArray.set(xAfterMotion, yAfterMotion, gameBoardArrayValueAfterMotion);
-                    paintArray[xAfterMotion][yAfterMotion].setColor(motionPaint.getColor());
-                    updateBonusValues();
-                } else {
-                    offsetX = offsetX + motionIncrementX / 5.0f;
-                    offsetY = offsetY + motionIncrementY / 5.0f;
-                    motionRect.left = (int) (startFloatPosX + offsetX);
-                    motionRect.right = (int) (startFloatPosX + offsetX + rectWidth);
-                    motionRect.top = (int) (startFloatPosY + offsetY);
-                    motionRect.bottom = (int) (startFloatPosY + offsetY + rectHeight);
-
-                }
+                animateJump();
             } else {
                 // normal motion along the motion path
-                if (reachedPathPosition() || firstStatusMotionEntry) {
-                    if (!firstStatusMotionEntry) {
-                        gameBoardArray.set(xAfterMotion, yAfterMotion, gameBoardArrayValueAfterMotion);
-                        paintArray[xAfterMotion][yAfterMotion].setColor(motionPaint.getColor());
-                    }
-                    firstStatusMotionEntry = false;
-                    if (!motionPath.isEmpty()) {
-                        directionT dir = motionPath.get(motionPath.size() - 1);
-                        motionPath.remove(motionPath.size() - 1);
-                        if (dir == directionT.LEFT) {
-                            moveLeft(startPositionX, startPositionY);
-                            startPositionX--;
-                        } else if (dir == directionT.DOWN) {
-                            moveDown(startPositionX, startPositionY);
-                            startPositionY++;
-                        } else if (dir == directionT.RIGHT) {
-                            moveRight(startPositionX, startPositionY);
-                            startPositionX++;
-                        } else if (dir == directionT.UP) {
-                            moveUp(startPositionX, startPositionY);
-                            startPositionY--;
-                        }
-
-                        if (swapSelected) {
-                            dir = inverseMotionPath.get(inverseMotionPath.size() - 1);
-                            inverseMotionPath.remove(inverseMotionPath.size() - 1);
-                            if (dir == directionT.LEFT) {
-                                applyCommonSwapMotionSettings(startSwapPositionX, startSwapPositionY, --startSwapPositionX, startSwapPositionY);
-                            } else if (dir == directionT.DOWN) {
-                                applyCommonSwapMotionSettings(startSwapPositionX, startSwapPositionY, startSwapPositionX, ++startSwapPositionY);
-                            } else if (dir == directionT.RIGHT) {
-                                applyCommonSwapMotionSettings(startSwapPositionX, startSwapPositionY, ++startSwapPositionX, startSwapPositionY);
-                            } else if (dir == directionT.UP) {
-                                applyCommonSwapMotionSettings(startSwapPositionX, startSwapPositionY, startSwapPositionX, --startSwapPositionY);
-                            }
-                        }
-
-                    } else {
-                        if (swapSelected) {
-                            swapCounter--;
-                            updateBonusValues();
-                            gameBoardArray.set(xAfterSwapMotion, yAfterSwapMotion, swapPartnerValueAfterMotion);
-                            paintArray[xAfterSwapMotion][yAfterSwapMotion].setColor(swapMotionPaint.getColor());
-                            dropInCount = 0;
-                        } else {
-                            dropInCount = DROP_INS_AFTER_MOTION+level/10;
-                        }
-                        status = statusT.MERGE;
-                        firstStatusMotionEntry = true;
-                    }
-                } else {
-                    offsetX = offsetX + motionIncrementX;
-                    offsetY = offsetY + motionIncrementY;
-                    motionRect.left = (int) (startFloatPosX + offsetX);
-                    motionRect.right = (int) (startFloatPosX + offsetX + rectWidth);
-                    motionRect.top = (int) (startFloatPosY + offsetY);
-                    motionRect.bottom = (int) (startFloatPosY + offsetY + rectHeight);
-                    if (swapSelected) {
-                        swapOffsetX = swapOffsetX + swapMotionIncrementX;
-                        swapOffsetY = swapOffsetY + swapMotionIncrementY;
-                        swapMotionRect.left = (int) (swapStartFloatPosX + swapOffsetX);
-                        swapMotionRect.right = (int) (swapStartFloatPosX + swapOffsetX + rectWidth);
-                        swapMotionRect.top = (int) (swapStartFloatPosY + swapOffsetY);
-                        swapMotionRect.bottom = (int) (swapStartFloatPosY + swapOffsetY + rectHeight);
-                    }
-                }
+                normalMotionAnimation();
             }
-        } else if (status == statusT.MERGE) {
-            if (mergeAnimationStep == 0) {
-                gameBoardArrayValueAfterMotion = gameBoardArray.get(targetPositionX, targetPositionY);
-                mergeGroup = merge(targetPositionX, targetPositionY);
-                if (mergeGroup.size() >= 4) {
-                    startMergeAnimation();
-                } else {
-                    if (swapSelected) {
-                        swapSelected = false;
-                        targetPositionX = swap2ndMergePositionX;
-                        targetPositionY = swap2ndMergePositionY;
-                        status = statusT.MERGE; // do merge for the swap target position too
-                    } else {
-                        status = statusT.DROP_IN_NEW_CELLS;
-                    }
-                }
-                int freeCells = gameBoardArray.getNumFreeCells();
-                if (freeCells == 0) {
-                    status = statusT.GAME_OVER;
-                }
-            } else {
-                mergeAnimationStep--;
-                for (int i = 0; i < numMergeRects; i++) {
-                    mergeRects[i].left = (int) (((float) mergeRects[i].left) + mergeIncrementsX[i]);
-                    mergeRects[i].right = (int) (((float) mergeRects[i].right) + mergeIncrementsX[i]);
-                    mergeRects[i].top = (int) (((float) mergeRects[i].top) + mergeIncrementsY[i]);
-                    mergeRects[i].bottom = (int) (((float) mergeRects[i].bottom) + mergeIncrementsY[i]);
-                }
-                if (mergeAnimationStep == 0) {
-                    finishMergeAnimation();
-                }
-            }
-        } else if (status == statusT.DROP_IN_NEW_CELLS) {
-            if (dropInCount > 0 && !dropInAnimationRunning) {
+        }
 
-                Coord c = gameBoardArray.randomlyAddCell(level - 1, 2 + level);
 
-                dropInCount--;
-                targetPositionX = c.x;
-                targetPositionY = c.y;
+        // -----------------------------------------------------
+        else if (status == statusT.MERGE) {
+            handleCellMerging();
+        }
 
-                startDropInAnimation();
 
-            } else {
-                if (dropInAnimationRunning) {
-                    animateDropIn();
-                } else {
-                    status = statusT.SELECT_START_POSITION;
-                }
-            }
-        } else if (status == statusT.GAME_OVER) {
+        // -----------------------------------------------------
+        else if (status == statusT.DROP_IN_NEW_CELLS) {
+            handleNewCellDropIns();
+        }
+
+
+        // -----------------------------------------------------
+        else if (status == statusT.GAME_OVER) {
             if (gameOverAnimationPhase == 0) {
                 startGameOverAnimation();
             }
+            
             if (highscoreExceeded) {
                 SharedPreferences.Editor editor = prefs.edit();
                 editor.putLong("highscore", highScore);
@@ -691,6 +609,175 @@ public class GameBoard {
             }
         }
 
+    }
+
+    private void handleNewCellDropIns() {
+        if (dropInCount > 0 && !dropInAnimationRunning) {
+
+            Coord c = gameBoardArray.randomlyAddCell(level - 1, 2 + level);
+
+            dropInCount--;
+            targetPositionX = c.x;
+            targetPositionY = c.y;
+
+            startDropInAnimation();
+
+        } else {
+            if (dropInAnimationRunning) {
+                animateDropIn();
+            } else {
+                status = statusT.SELECT_START_POSITION;
+            }
+        }
+    }
+
+    private void handleCellMerging() {
+        if (mergeAnimationStep == 0) {
+            gameBoardArrayValueAfterMotion = gameBoardArray.get(targetPositionX, targetPositionY);
+            mergeGroup = merge(targetPositionX, targetPositionY);
+            if (mergeGroup.size() >= 4) {
+                startMergeAnimation();
+            } else {
+                if (swapSelected) {
+                    swapSelected = false;
+                    targetPositionX = swap2ndMergePositionX;
+                    targetPositionY = swap2ndMergePositionY;
+                    status = statusT.MERGE; // do merge for the swap target position too
+                } else {
+                    status = statusT.DROP_IN_NEW_CELLS;
+                }
+            }
+            int freeCells = gameBoardArray.getNumFreeCells();
+            if (freeCells == 0) {
+                status = statusT.GAME_OVER;
+            }
+        } else {
+            mergeAnimationStep--;
+            for (int i = 0; i < numMergeRects; i++) {
+                mergeRects[i].left = (int) (((float) mergeRects[i].left) + mergeIncrementsX[i]);
+                mergeRects[i].right = (int) (((float) mergeRects[i].right) + mergeIncrementsX[i]);
+                mergeRects[i].top = (int) (((float) mergeRects[i].top) + mergeIncrementsY[i]);
+                mergeRects[i].bottom = (int) (((float) mergeRects[i].bottom) + mergeIncrementsY[i]);
+            }
+            if (mergeAnimationStep == 0) {
+                finishMergeAnimation();
+            }
+        }
+    }
+
+    private void normalMotionAnimation() {
+        if (reachedPathPosition() || startMotion) {
+            if (!startMotion) {
+                gameBoardArray.set(xAfterMotion, yAfterMotion, gameBoardArrayValueAfterMotion);
+                paintArray[xAfterMotion][yAfterMotion].setColor(motionPaint.getColor());
+            }
+            startMotion = false;
+            if (!motionPath.isEmpty()) {
+                directionT dir = motionPath.get(motionPath.size() - 1);
+                handleNextMotionStep(dir);
+
+                if (swapSelected) {
+                    handleNextSwapMotionStep(dir);
+                }
+
+            } else {
+                if (swapSelected) {
+                    swapCounter--;
+                    updateBonusValues();
+                    gameBoardArray.set(xAfterSwapMotion, yAfterSwapMotion, swapPartnerValueAfterMotion);
+                    paintArray[xAfterSwapMotion][yAfterSwapMotion].setColor(swapMotionPaint.getColor());
+                    dropInCount = 0;
+                } else {
+                    dropInCount = DROP_INS_AFTER_MOTION+level/10;
+                }
+                status = statusT.MERGE;
+                startMotion = true;
+            }
+        } else {
+            offsetX = offsetX + motionIncrementX;
+            offsetY = offsetY + motionIncrementY;
+            motionRect.left = (int) (startFloatPosX + offsetX);
+            motionRect.right = (int) (startFloatPosX + offsetX + rectWidth);
+            motionRect.top = (int) (startFloatPosY + offsetY);
+            motionRect.bottom = (int) (startFloatPosY + offsetY + rectHeight);
+            if (swapSelected) {
+                swapOffsetX = swapOffsetX + swapMotionIncrementX;
+                swapOffsetY = swapOffsetY + swapMotionIncrementY;
+                swapMotionRect.left = (int) (swapStartFloatPosX + swapOffsetX);
+                swapMotionRect.right = (int) (swapStartFloatPosX + swapOffsetX + rectWidth);
+                swapMotionRect.top = (int) (swapStartFloatPosY + swapOffsetY);
+                swapMotionRect.bottom = (int) (swapStartFloatPosY + swapOffsetY + rectHeight);
+            }
+        }
+    }
+
+    private void handleNextSwapMotionStep(directionT dir) {
+        dir = inverseMotionPath.get(inverseMotionPath.size() - 1);
+        inverseMotionPath.remove(inverseMotionPath.size() - 1);
+        if (dir == directionT.LEFT) {
+            applyCommonSwapMotionSettings(startSwapPositionX, startSwapPositionY, --startSwapPositionX, startSwapPositionY);
+        } else if (dir == directionT.DOWN) {
+            applyCommonSwapMotionSettings(startSwapPositionX, startSwapPositionY, startSwapPositionX, ++startSwapPositionY);
+        } else if (dir == directionT.RIGHT) {
+            applyCommonSwapMotionSettings(startSwapPositionX, startSwapPositionY, ++startSwapPositionX, startSwapPositionY);
+        } else if (dir == directionT.UP) {
+            applyCommonSwapMotionSettings(startSwapPositionX, startSwapPositionY, startSwapPositionX, --startSwapPositionY);
+        }
+    }
+
+    private void handleNextMotionStep(directionT dir) {
+        motionPath.remove(motionPath.size() - 1);
+        if (dir == directionT.LEFT) {
+            moveLeft(startPositionX, startPositionY);
+            startPositionX--;
+        } else if (dir == directionT.DOWN) {
+            moveDown(startPositionX, startPositionY);
+            startPositionY++;
+        } else if (dir == directionT.RIGHT) {
+            moveRight(startPositionX, startPositionY);
+            startPositionX++;
+        } else if (dir == directionT.UP) {
+            moveUp(startPositionX, startPositionY);
+            startPositionY--;
+        }
+    }
+
+    private void animateJump() {
+        if (reachedJumpTargetPosition()) {
+            status = statusT.MERGE;
+            startMotion = true;
+            dropInCount = 0;
+            jumpSelected = false;
+            jumpCounter--;
+            gameBoardArray.set(xAfterMotion, yAfterMotion, gameBoardArrayValueAfterMotion);
+            paintArray[xAfterMotion][yAfterMotion].setColor(motionPaint.getColor());
+            updateBonusValues();
+        } else {
+            offsetX = offsetX + motionIncrementX / 5.0f;
+            offsetY = offsetY + motionIncrementY / 5.0f;
+            motionRect.left = (int) (startFloatPosX + offsetX);
+            motionRect.right = (int) (startFloatPosX + offsetX + rectWidth);
+            motionRect.top = (int) (startFloatPosY + offsetY);
+            motionRect.bottom = (int) (startFloatPosY + offsetY + rectHeight);
+
+        }
+    }
+
+    private void animateSelectionPulse() {
+        selectionPulseCounter--;
+        if (selectionPulseCounter == 0) {
+            rectArray[startPositionX][startPositionY].left += selectionPulseDirection;
+            rectArray[startPositionX][startPositionY].right -= selectionPulseDirection;
+            rectArray[startPositionX][startPositionY].top += selectionPulseDirection;
+            rectArray[startPositionX][startPositionY].bottom -= selectionPulseDirection;
+            selectionPulseCounter = SELECTION_PULSE_TIME;
+
+            selectionWidth++;
+            if (selectionWidth == SELECTION_PULSE_WIDTH) {
+                selectionWidth = 0;
+                selectionPulseDirection *= -1;
+            }
+        }
     }
 
     private void startDropInAnimation() {
@@ -1072,14 +1159,14 @@ public class GameBoard {
                                 swap2ndMergePositionY = startPositionY;
                             } else {
                                 motionPath = new ArrayList<>();
-                                alert = ALERT_TIME;
+                                alertAnimationCounter = ALERT_TIME;
                             }
                         }
                         if (!motionPath.isEmpty()) {
                             resetCell(startPositionX, startPositionY);
                             status = statusT.MOTION;
                         } else {
-                            alert = ALERT_TIME;
+                            alertAnimationCounter = ALERT_TIME;
                             motionPath = new ArrayList<>();
                             if (swapSelected) {
                                 resetCell(startPositionX, startPositionY);
