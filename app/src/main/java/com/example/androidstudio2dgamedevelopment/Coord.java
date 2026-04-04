@@ -1,9 +1,6 @@
 package com.example.androidstudio2dgamedevelopment;
 
-import androidx.annotation.Nullable;
-
-public class Coord implements Comparable {
-
+public class Coord implements Comparable<Coord> {
 
     public int x;
     public int y;
@@ -24,30 +21,24 @@ public class Coord implements Comparable {
     }
 
     @Override
-    public boolean equals(@Nullable Object obj) {
-        if (obj != null && obj.getClass() == this.getClass()) {
-            return (x==((Coord)obj).x && y==((Coord)obj).y);
+    public boolean equals(Object obj) {
+        if (obj instanceof Coord) {
+            Coord c = (Coord) obj;
+            return x == c.x && y == c.y;
         }
         return false;
     }
 
     @Override
-    public int compareTo(Object obj) {
-        if (obj != null && obj.getClass() == this.getClass()) {
-            Coord c = (Coord) obj;
-            if (c.x > x) {
-                return 1;
-            } else if (c.x < x) {
-                return -1;
-            } else if (c.y > y) {
-                return 1;
-            } else if (c.y < y) {
-                return -1;
-            } else {
-                return 0;
-            }
-        } else {
-            return 1;
+    public int hashCode() {
+        return 31 * x + y;
+    }
+
+    @Override
+    public int compareTo(Coord c) {
+        if (x != c.x) {
+            return Integer.compare(x, c.x);
         }
+        return Integer.compare(y, c.y);
     }
 }
