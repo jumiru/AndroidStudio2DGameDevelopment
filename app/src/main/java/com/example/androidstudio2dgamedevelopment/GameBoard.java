@@ -36,6 +36,14 @@ public class GameBoard {
     private static final int LEVEL_ANIMATION_DURATION = 100;
     private static final int BONUS_ANIMATION_DURATION = 50;
     private static final String GAME_OVER_TEXT = "game over!";
+    // Bump this value to trigger a one-time highscore reset on next launch
+    private static final int HIGHSCORE_RESET_VERSION = 2;
+
+    private static final int MIN_COMBO_SIZE = 4;
+    private static final long BASE_COMBO_SCORE = 4L;
+    private static final long BASE_LEVEL_SCORE = 100L;
+    private static final long BASE_BONUS_STEP = 100L;
+    private static final long BONUS_STEP_PER_LEVEL = 50L;
 
     public enum directionT {
         UP, DOWN, LEFT, RIGHT
@@ -75,6 +83,8 @@ public class GameBoard {
 
     private boolean highscoreExceeded;
     private long nextScoreForBonus;
+    private long chainScoreProduct;
+    private int chainLength;
 
     private final Paint textPaint;
     private final Paint scoreAndLevelPaint;
@@ -209,6 +219,16 @@ public class GameBoard {
 
         this.width = prefs.getInt("width", 5);
         this.height = prefs.getInt("height", 7);
+
+        // One-time highscore reset: bump HIGHSCORE_RESET_VERSION to reset again in the future
+        int savedResetVersion = prefs.getInt("highscore_reset_version", 0);
+        if (savedResetVersion < HIGHSCORE_RESET_VERSION) {
+            SharedPreferences.Editor resetEditor = prefs.edit();
+            resetEditor.putLong("highscore", 0);
+            resetEditor.putInt("highscore_reset_version", HIGHSCORE_RESET_VERSION);
+            resetEditor.apply();
+        }
+
         this.highScore = prefs.getLong("highscore", 0);
 
 
@@ -261,8 +281,10 @@ public class GameBoard {
         status = statusT.SELECT_START_POSITION;
         startMotion = true;
         score = 0;
+        chainScoreProduct = 0L;
+        chainLength = 0;
 
-        nextScoreForBonus = 100;
+        nextScoreForBonus = getBonusStepForLevel(1);
 
         highscoreExceeded = false;
 
@@ -363,9 +385,11 @@ public class GameBoard {
     }
 
     private void drawScoreAndLevelInfo(Canvas canvas) {
-        String scoreText = "score: " + getScoreText(score) + "   (" + getScoreText(highScore) + ")";
-        canvas.drawText(levelText, 20, canvasHeight - STATUS_TEXT_SIZE, scoreAndLevelPaint);
-        canvas.drawText(scoreText, 20, canvasHeight - 3 * (STATUS_TEXT_SIZE - 20), scoreAndLevelPaint);
+        String scoreText     = "score: " + getScoreText(score);
+        String highScoreText = "best:  " + getScoreText(highScore);
+        canvas.drawText(levelText,     20, canvasHeight - STATUS_TEXT_SIZE,             scoreAndLevelPaint);
+        canvas.drawText(highScoreText, 20, canvasHeight - 3 * (STATUS_TEXT_SIZE - 20),  scoreAndLevelPaint);
+        canvas.drawText(scoreText,     20, canvasHeight - 5 * (STATUS_TEXT_SIZE - 20),  scoreAndLevelPaint);
     }
 
     private void drawBonusInformation(Canvas canvas) {
@@ -639,7 +663,7 @@ public class GameBoard {
         if (mergeAnimationStep == 0) {
             gameBoardArrayValueAfterMotion = gameBoardArray.get(targetPositionX, targetPositionY);
             mergeGroup = merge(targetPositionX, targetPositionY);
-            if (mergeGroup.size() >= 4) {
+            if (mergeGroup.size() >= MIN_COMBO_SIZE) {
                 startMergeAnimation();
             } else {
                 if (swapSelected) {
@@ -648,11 +672,13 @@ public class GameBoard {
                     targetPositionY = swap2ndMergePositionY;
                     status = statusT.MERGE; // do merge for the swap target position too
                 } else {
+                    finalizeChainScoreIfNeeded();
                     status = statusT.DROP_IN_NEW_CELLS;
                 }
             }
             int freeCells = gameBoardArray.getNumFreeCells();
             if (freeCells == 0) {
+                finalizeChainScoreIfNeeded();
                 status = statusT.GAME_OVER;
             }
         } else {
@@ -868,50 +894,20 @@ public class GameBoard {
         gameBoardArray.set(targetPositionX, targetPositionY, gameBoardArrayValueAfterMotion + 2);
     }
 
-    private void finishMergeAnimation() {
-        if (dropInCount == DROP_INS_AFTER_MOTION) {
-            dropInCount = 0;
-        }
+     private void finishMergeAnimation() {
+         if (dropInCount == DROP_INS_AFTER_MOTION) {
+             dropInCount = 0;
+         }
 
-        score += mergeGroup.size();
-
-        // Calculate new level based on score
-        int newLevel = (int) (1 + score / 100);
-
-        if (newLevel > level) {
-            level = newLevel;
-            startLevelAnimation();
-        }
-
-        if (score > highScore) {
-            highScore = score;
-            highscoreExceeded = true;
-        }
-        if (score >= nextScoreForBonus) {
-            nextScoreForBonus += 100;
-            bonusWin = rand.nextInt(5);
-            switch (bonusWin) {
-                case 0:
-                    undoCounter += 2;
-                    break;
-                case 1:
-                    swapCounter += 2;
-                    break;
-                case 2:
-                    jumpCounter += 2;
-                    break;
-                case 3:
-                    delRowCounter += 2;
-                    break;
-                case 4:
-                    delColCounter += 2;
-                    break;
-            }
-
-            startBonusAnimation();
-        }
-
-    }
+         long comboScore = calculateComboScore(mergeGroup.size());
+         if (chainLength == 0) {
+             chainScoreProduct = comboScore;
+         } else {
+             // Multiply the scores for chain combos
+             chainScoreProduct = safeMultiply(chainScoreProduct, comboScore);
+         }
+         chainLength++;
+     }
 
     private void startBonusAnimation() {
         animateBonusCounter = BONUS_ANIMATION_DURATION;
@@ -973,6 +969,98 @@ public class GameBoard {
         jumpText   = Integer.toString(jumpCounter);
         delRowText = Integer.toString(delRowCounter);
         delColText = Integer.toString(delColCounter);
+    }
+
+    private long calculateComboScore(int comboSize) {
+        if (comboSize < MIN_COMBO_SIZE) {
+            return 0L;
+        }
+        int shift = comboSize - MIN_COMBO_SIZE;
+        if (shift >= 60) {
+            return Long.MAX_VALUE;
+        }
+        return BASE_COMBO_SCORE << shift;
+    }
+
+    private long safeAdd(long a, long b) {
+        if (a > Long.MAX_VALUE - b) {
+            return Long.MAX_VALUE;
+        }
+        return a + b;
+    }
+
+    private long safeMultiply(long a, long b) {
+        if (a == 0L || b == 0L) {
+            return 0L;
+        }
+        if (a > Long.MAX_VALUE / b) {
+            return Long.MAX_VALUE;
+        }
+        return a * b;
+    }
+
+    private long getLevelThreshold(int nextLevel) {
+        return BASE_LEVEL_SCORE * nextLevel * (long) nextLevel;
+    }
+
+    private long getBonusStepForLevel(int currentLevel) {
+        return BASE_BONUS_STEP + BONUS_STEP_PER_LEVEL * Math.max(0, currentLevel - 1);
+    }
+
+    private void awardRandomBonus() {
+        bonusWin = rand.nextInt(5);
+        switch (bonusWin) {
+            case 0:
+                undoCounter += 2;
+                break;
+            case 1:
+                swapCounter += 2;
+                break;
+            case 2:
+                jumpCounter += 2;
+                break;
+            case 3:
+                delRowCounter += 2;
+                break;
+            case 4:
+                delColCounter += 2;
+                break;
+            default:
+                break;
+        }
+        startBonusAnimation();
+    }
+
+    private void applyProgressionAfterScoreChange() {
+        boolean leveledUp = false;
+        while (score >= getLevelThreshold(level + 1)) {
+            level++;
+            leveledUp = true;
+        }
+        if (leveledUp) {
+            startLevelAnimation();
+        }
+
+        if (score > highScore) {
+            highScore = score;
+            highscoreExceeded = true;
+        }
+
+        while (score >= nextScoreForBonus) {
+            awardRandomBonus();
+            nextScoreForBonus = safeAdd(nextScoreForBonus, getBonusStepForLevel(level));
+        }
+    }
+
+    private void finalizeChainScoreIfNeeded() {
+        if (chainLength == 0) {
+            return;
+        }
+
+        score = safeAdd(score, chainScoreProduct);
+        chainScoreProduct = 0L;
+        chainLength = 0;
+        applyProgressionAfterScoreChange();
     }
 
     private Set<Coord> merge(int x, int y) {
