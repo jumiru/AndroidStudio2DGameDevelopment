@@ -322,4 +322,35 @@ public class GameBoardArray {
             }
         }
     }
+
+    public boolean dissolveAt(int x, int y) {
+        if (x < 0 || x >= width || y < 0 || y >= height) {
+            return false;
+        }
+        if (gameBoardContent[x][y] == -1) {
+            return false;
+        }
+        set(x, y, -1);
+        return true;
+    }
+
+    public void shiftRowRight(int y) {
+        if (y < 0 || y >= height || width <= 1) {
+            return;
+        }
+        for (int x = width - 1; x >= 1; x--) {
+            set(x, y, gameBoardContent[x - 1][y]);
+        }
+        set(0, y, -1);
+    }
+
+    public void shiftColDown(int x) {
+        if (x < 0 || x >= width || height <= 1) {
+            return;
+        }
+        for (int y = height - 1; y >= 1; y--) {
+            set(x, y, gameBoardContent[x][y - 1]);
+        }
+        set(x, 0, -1);
+    }
 }
