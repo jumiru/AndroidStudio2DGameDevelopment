@@ -45,6 +45,7 @@ public class GameBoard {
     private static final int HUD_LEVEL_ACCENT_COLOR = 0xff63d88e;
     private static final int HUD_BEST_ACCENT_COLOR = 0xff63b8ff;
     private static final int HUD_BEST_NEW_RECORD_ACCENT_COLOR = 0xffff8bd9;
+    private static final int BONUS_ICON_BG_DEFAULT_COLOR = 0xff000000;
     private static final int BONUS_SLOT_CARD_COLOR = 0xff111a2d;
     private static final int BONUS_SLOT_BORDER_COLOR = 0xff2e466f;
     private static final String GAME_OVER_TEXT = "game over!";
@@ -459,24 +460,6 @@ public class GameBoard {
 
         drawScoreAndLevelInfo(canvas);
 
-        if (undoSelected) {
-            highlightBonusSelection(undoRect, canvas);
-        } else if (swapSelected) {
-            highlightBonusSelection(swapRect, canvas);
-        } else if (jumpSelected) {
-            highlightBonusSelection(jumpRect, canvas);
-        } else if (dissolveSelected) {
-            highlightBonusSelection(dissolveRect, canvas);
-        } else if (delRowSelected) {
-            highlightBonusSelection(delRowRect, canvas);
-        } else if (delColSelected) {
-            highlightBonusSelection(delColRect, canvas);
-        } else if (shiftRowSelected) {
-            highlightBonusSelection(shiftRowRect, canvas);
-        } else if (shiftColSelected) {
-            highlightBonusSelection(shiftColRect, canvas);
-        }
-
         drawBonusInformation(canvas);
 
         if (levelAnimationCounter > 0) {
@@ -583,24 +566,25 @@ public class GameBoard {
     }
 
     private void drawBonusInformation(Canvas canvas) {
-        drawBonusSlot(canvas, undo, undoRect, undoText, undoBuyRect, BUY_COST_UNDO, BONUS_ACCENT_COLORS[0]);
-        drawBonusSlot(canvas, swap, swapRect, swapText, swapBuyRect, BUY_COST_SWAP, BONUS_ACCENT_COLORS[1]);
-        drawBonusSlot(canvas, jump, jumpRect, jumpText, jumpBuyRect, BUY_COST_JUMP, BONUS_ACCENT_COLORS[2]);
-        drawBonusSlot(canvas, dissolve, dissolveRect, dissolveText, dissolveBuyRect, BUY_COST_DISSOLVE, BONUS_ACCENT_COLORS[3]);
-        drawBonusSlot(canvas, delRow, delRowRect, delRowText, delRowBuyRect, BUY_COST_DEL_ROW, BONUS_ACCENT_COLORS[4]);
-        drawBonusSlot(canvas, delCol, delColRect, delColText, delColBuyRect, BUY_COST_DEL_COL, BONUS_ACCENT_COLORS[5]);
-        drawBonusSlot(canvas, shiftRow, shiftRowRect, shiftRowText, shiftRowBuyRect, BUY_COST_SHIFT_ROW, BONUS_ACCENT_COLORS[6]);
-        drawBonusSlot(canvas, shiftCol, shiftColRect, shiftColText, shiftColBuyRect, BUY_COST_SHIFT_COL, BONUS_ACCENT_COLORS[7]);
+        drawBonusSlot(canvas, undo, undoRect, undoText, undoBuyRect, BUY_COST_UNDO, BONUS_ACCENT_COLORS[0], undoSelected);
+        drawBonusSlot(canvas, swap, swapRect, swapText, swapBuyRect, BUY_COST_SWAP, BONUS_ACCENT_COLORS[1], swapSelected);
+        drawBonusSlot(canvas, jump, jumpRect, jumpText, jumpBuyRect, BUY_COST_JUMP, BONUS_ACCENT_COLORS[2], jumpSelected);
+        drawBonusSlot(canvas, dissolve, dissolveRect, dissolveText, dissolveBuyRect, BUY_COST_DISSOLVE, BONUS_ACCENT_COLORS[3], dissolveSelected);
+        drawBonusSlot(canvas, delRow, delRowRect, delRowText, delRowBuyRect, BUY_COST_DEL_ROW, BONUS_ACCENT_COLORS[4], delRowSelected);
+        drawBonusSlot(canvas, delCol, delColRect, delColText, delColBuyRect, BUY_COST_DEL_COL, BONUS_ACCENT_COLORS[5], delColSelected);
+        drawBonusSlot(canvas, shiftRow, shiftRowRect, shiftRowText, shiftRowBuyRect, BUY_COST_SHIFT_ROW, BONUS_ACCENT_COLORS[6], shiftRowSelected);
+        drawBonusSlot(canvas, shiftCol, shiftColRect, shiftColText, shiftColBuyRect, BUY_COST_SHIFT_COL, BONUS_ACCENT_COLORS[7], shiftColSelected);
     }
 
-    private void drawBonusSlot(Canvas canvas, Drawable icon, Rect iconRect, String countText, Rect buyRect, long buyCost, int accentColor) {
+    private void drawBonusSlot(Canvas canvas, Drawable icon, Rect iconRect, String countText, Rect buyRect,
+                               long buyCost, int accentColor, boolean isSelected) {
         float slotTop = iconRect.top - 2.0f * RECT_BORDER;
         float slotBottom = buyRect.bottom + RECT_BORDER;
         bonusSlotRect.set(buyRect.left - RECT_BORDER, slotTop, buyRect.right + RECT_BORDER, slotBottom);
         canvas.drawRoundRect(bonusSlotRect, 16.0f, 16.0f, bonusSlotCardPaint);
         canvas.drawRoundRect(bonusSlotRect, 16.0f, 16.0f, bonusSlotBorderPaint);
 
-        bonusIconBgPaint.setColor(accentColor);
+        bonusIconBgPaint.setColor(isSelected ? accentColor : BONUS_ICON_BG_DEFAULT_COLOR);
         float iconCx = iconRect.exactCenterX();
         float iconCy = iconRect.exactCenterY();
         float iconRadius = bonusIconWidth * 0.58f;
