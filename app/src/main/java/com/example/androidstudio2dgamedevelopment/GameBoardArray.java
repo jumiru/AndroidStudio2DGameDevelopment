@@ -313,14 +313,18 @@ public class GameBoardArray {
         triggerBackupBeforeNextModification = true;
     }
 
-    public void removeAllCellsSmallerThan(int level) {
+    public void removeAllCellsBelowIndex(int minIndex) {
         for (int y = 0; y < height; y++) {
             for (int x = 0; x < width; x++) {
-                if (gameBoardContent[x][y] != -1 && gameBoardContent[x][y] < level - 1) {
+                if (gameBoardContent[x][y] != -1 && gameBoardContent[x][y] < minIndex) {
                     set(x, y, -1);
                 }
             }
         }
+    }
+
+    public void removeAllCellsSmallerThan(int level) {
+        removeAllCellsBelowIndex(LevelProgression.getMinSpawnIndex(level));
     }
 
     public boolean dissolveAt(int x, int y) {

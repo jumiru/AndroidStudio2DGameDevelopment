@@ -59,9 +59,12 @@ public class Game extends SurfaceView implements SurfaceHolder.Callback {
 
     @Override
     public boolean onTouchEvent(MotionEvent event) {
-        if (event.getAction() == MotionEvent.ACTION_DOWN) {
-            gameBoard.onTouchEvent((int) event.getX(), (int) event.getY());
-            performClick(); // accessibility requirement
+        int action = event.getActionMasked();
+        if (action == MotionEvent.ACTION_DOWN || action == MotionEvent.ACTION_MOVE || action == MotionEvent.ACTION_UP) {
+            gameBoard.onTouchEvent(action, (int) event.getX(), (int) event.getY());
+            if (action == MotionEvent.ACTION_DOWN) {
+                performClick(); // accessibility requirement
+            }
             return true;
         }
         return super.onTouchEvent(event);

@@ -7,6 +7,7 @@ import android.graphics.Paint;
 import android.graphics.Rect;
 import android.graphics.RectF;
 import android.graphics.drawable.Drawable;
+import android.view.MotionEvent;
 
 import androidx.core.content.ContextCompat;
 
@@ -39,7 +40,10 @@ public class GameBoard {
     private static final int BONUS_ANIMATION_DURATION = 50;
     private static final int DISSOLVE_ANIMATION_DURATION = 14;
     private static final int LINE_DISSOLVE_ANIMATION_DURATION = 18;
+    private static final int LEVEL_PRUNE_ANIMATION_DURATION = 22;
     private static final int SHIFT_BONUS_ANIMATION_STEPS = 10;
+    private static final int SHIFT_SELECTION_PULSE_CYCLE = 30;
+    private static final float SHIFT_SELECTION_SWIPE_THRESHOLD_CELLS = 0.38f;
     private static final int SHIFT_BLUR_TRAIL_COUNT = 3;
     private static final int SHIFT_BLUR_BASE_ALPHA = 92;
     private static final int SHIFT_EDGE_DISSOLVE_MIN_ALPHA = 28;
@@ -48,12 +52,24 @@ public class GameBoard {
     private static final int SECRET_CODE_SCORE = 0;
     private static final int SECRET_CODE_LEVEL = 1;
     private static final int SECRET_CODE_BEST = 2;
-    // Hidden test code: SCORE -> LEVEL -> BEST -> SCORE
-    private static final int[] SECRET_CODE_SEQUENCE = {
+    private static final long SECRET_CODE_SCORE_BOOST_AMOUNT = 300L;
+    // Hidden test code 1: SCORE -> LEVEL -> BEST -> SCORE
+    private static final int[] SECRET_CODE_SEQUENCE_BONUS = {
             SECRET_CODE_SCORE,
             SECRET_CODE_LEVEL,
             SECRET_CODE_BEST,
             SECRET_CODE_SCORE
+    };
+    // Hidden test code 2: BEST -> LEVEL -> SCORE -> BEST
+    private static final int[] SECRET_CODE_SEQUENCE_SCORE_BOOST = {
+            SECRET_CODE_BEST,
+            SECRET_CODE_LEVEL,
+            SECRET_CODE_SCORE,
+            SECRET_CODE_BEST
+    };
+    private static final int[][] SECRET_CODE_SEQUENCES = {
+            SECRET_CODE_SEQUENCE_BONUS,
+            SECRET_CODE_SEQUENCE_SCORE_BOOST
     };
     private static final int HUD_CORNER_RADIUS = 26;
     private static final int HUD_PANEL_COLOR = 0xff16213a;
@@ -189,11 +205,22 @@ public class GameBoard {
     private String[] lineDissolveTexts;
     private Rect lineDissolveDrawRect;
 
+    // level-up prune animation for removed low-value blocks
+    private boolean levelPruneAnimationRunning;
+    private int levelPruneAnimationCounter;
+    private Coord[] levelPruneCoords;
+    private Rect[] levelPruneRects;
+    private Paint[] levelPrunePaints;
+    private String[] levelPruneTexts;
+    private Rect levelPruneDrawRect;
+
     private int alertAnimationCounter;
 
     private String levelText;
+    private String levelHintText;
     private int levelAnimationCounter;
     private final Paint levelAnimationPaint;
+    private final Paint levelHintPaint;
 
     // counter for dropping in new cells after motion
     private int dropInCount;
@@ -209,6 +236,7 @@ public class GameBoard {
 
     // line shift bonus animation
     private boolean shiftBonusAnimationIsRow;
+    private int shiftBonusDirectionSign;
     private int shiftBonusLineIndex;
     private int shiftBonusAnimationCounter;
     private float shiftBonusOffsetX;
@@ -220,13 +248,20 @@ public class GameBoard {
     private Paint[] shiftBonusPaints;
     private String[] shiftBonusTexts;
     private Rect shiftBonusDrawRect;
+    private boolean shiftSelectionActive;
+    private boolean shiftSelectionIsRow;
+    private int shiftSelectionLineIndex;
+    private int shiftSelectionPulseTick;
+    private final Paint shiftSelectionPulsePaint;
+    private int touchDownX;
+    private int touchDownY;
     private final Paint shiftEdgeDissolvePaint;
     private final Paint shiftEdgeDissolveStrokePaint;
     private final Paint shiftEdgeDissolveTextPaint;
     private Rect statusScoreRect;
     private Rect statusLevelRect;
     private Rect statusBestRect;
-    private int secretCodeProgress;
+    private int[] secretCodeProgress;
     private long secretCodeLastTapMs;
 
     // cell pulsing while selected
@@ -439,11 +474,17 @@ public class GameBoard {
         shiftEdgeDissolveTextPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         shiftEdgeDissolveTextPaint.setColor(TEXT_COLOR_WHITE);
 
+        shiftSelectionPulsePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        shiftSelectionPulsePaint.setStyle(Paint.Style.STROKE);
+        shiftSelectionPulsePaint.setColor(0xfff7d774);
+
         statusPanelRect = new RectF();
         bonusSlotRect = new RectF();
 
         levelAnimationPaint = new Paint();
         levelAnimationPaint.setColor(TEXT_COLOR_WHITE);
+        levelHintPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        levelHintPaint.setColor(TEXT_COLOR_WHITE);
 
         rand = new Random();
         motionPath = new ArrayList<>();
@@ -490,20 +531,31 @@ public class GameBoard {
         shiftColCounter = 0;
 
         deselectAllBonuses();
-        secretCodeProgress = 0;
+        secretCodeProgress = new int[SECRET_CODE_SEQUENCES.length];
         secretCodeLastTapMs = 0L;
         shiftBonusValues = null;
         shiftBonusRects = null;
         shiftBonusPaints = null;
         shiftBonusTexts = null;
+        shiftSelectionActive = false;
+        shiftSelectionLineIndex = -1;
+        shiftSelectionPulseTick = 0;
+        touchDownX = 0;
+        touchDownY = 0;
         lineDissolveAnimationRunning = false;
         lineDissolveRects = null;
         lineDissolvePaints = null;
         lineDissolveTexts = null;
+        levelPruneAnimationRunning = false;
+        levelPruneCoords = null;
+        levelPruneRects = null;
+        levelPrunePaints = null;
+        levelPruneTexts = null;
 
 
         level = 1;
         levelText = "Level: " + level;
+        levelHintText = getNextLevelHintText();
         updateBonusValues();
     }
 
@@ -542,6 +594,7 @@ public class GameBoard {
         }
 
         drawGameboard(canvas);
+        drawShiftSelectionPulse(canvas);
         drawMotionRect(canvas);
         drawMergeRects(canvas);
         drawShiftBonusAnimation(canvas);
@@ -560,6 +613,9 @@ public class GameBoard {
         if (lineDissolveAnimationRunning) {
             drawLineDissolveAnimation(canvas);
         }
+        if (levelPruneAnimationRunning) {
+            drawLevelPruneAnimation(canvas);
+        }
 
         if (levelAnimationCounter > 0) {
             drawLevelAnimation(canvas);
@@ -576,12 +632,35 @@ public class GameBoard {
         canvas.drawRect(dropInRect, dropInAnimationPaint);
     }
 
+    private void drawShiftSelectionPulse(Canvas canvas) {
+        if (!shiftSelectionActive || status == statusT.BONUS_SHIFT_ANIMATION) {
+            return;
+        }
+
+        float pulse = (float) (Math.sin((2.0f * Math.PI * shiftSelectionPulseTick) / SHIFT_SELECTION_PULSE_CYCLE) * 0.5f + 0.5f);
+        shiftSelectionPulsePaint.setStrokeWidth(4.0f + 8.0f * pulse);
+        shiftSelectionPulsePaint.setAlpha(96 + (int) (140.0f * pulse));
+
+        int length = shiftSelectionIsRow ? width : height;
+        for (int i = 0; i < length; i++) {
+            int x = shiftSelectionIsRow ? i : shiftSelectionLineIndex;
+            int y = shiftSelectionIsRow ? shiftSelectionLineIndex : i;
+            if (x < 0 || x >= width || y < 0 || y >= height) {
+                continue;
+            }
+            Rect cellRect = rectArray[x][y];
+            if (cellRect != null) {
+                canvas.drawRect(cellRect, shiftSelectionPulsePaint);
+            }
+        }
+    }
+
     private void drawShiftBonusAnimation(Canvas canvas) {
         if (status != statusT.BONUS_SHIFT_ANIMATION || shiftBonusRects == null) {
             return;
         }
         float progress = 1.0f - (float) shiftBonusAnimationCounter / (float) SHIFT_BONUS_ANIMATION_STEPS;
-        int outgoingIndex = shiftBonusRects.length - 1;
+        int outgoingIndex = shiftBonusDirectionSign >= 0 ? shiftBonusRects.length - 1 : 0;
         for (int i = 0; i < shiftBonusRects.length; i++) {
             if (shiftBonusRects[i] == null || shiftBonusPaints[i] == null) {
                 continue;
@@ -714,14 +793,86 @@ public class GameBoard {
         }
     }
 
+    private void drawLevelPruneAnimation(Canvas canvas) {
+        if (!levelPruneAnimationRunning || levelPruneRects == null) {
+            return;
+        }
+
+        float baseProgress = 1.0f - (float) levelPruneAnimationCounter / (float) LEVEL_PRUNE_ANIMATION_DURATION;
+        int length = levelPruneRects.length;
+        for (int i = 0; i < length; i++) {
+            Rect sourceRect = levelPruneRects[i];
+            Paint sourcePaint = levelPrunePaints[i];
+            if (sourceRect == null || sourcePaint == null) {
+                continue;
+            }
+
+            float stagger = (length <= 1) ? 0.0f : ((float) i / (float) (length - 1)) * 0.18f;
+            float progress = Math.min(1.0f, Math.max(0.0f, (baseProgress - stagger) / (1.0f - stagger + 0.0001f)));
+            float pulse = (float) Math.sin(progress * Math.PI);
+            float minDim = Math.min(sourceRect.width(), sourceRect.height());
+            float inset = progress * minDim * 0.34f;
+            float glowExpand = pulse * minDim * 0.12f;
+            int alpha = Math.max(16, 255 - (int) (progress * 236.0f));
+
+            float left = sourceRect.left + inset;
+            float top = sourceRect.top + inset;
+            float right = sourceRect.right - inset;
+            float bottom = sourceRect.bottom - inset;
+
+            shiftEdgeDissolvePaint.setColor(sourcePaint.getColor());
+            shiftEdgeDissolvePaint.setAlpha(Math.max(22, alpha - 18));
+            canvas.drawRoundRect(left, top, right, bottom, 12.0f, 12.0f, shiftEdgeDissolvePaint);
+
+            shiftEdgeDissolvePaint.setColor(0xfffff0a8);
+            shiftEdgeDissolvePaint.setAlpha(Math.max(0, 36 + (int) (pulse * 96.0f) - (int) (progress * 42.0f)));
+            canvas.drawRoundRect(left - glowExpand, top - glowExpand, right + glowExpand, bottom + glowExpand,
+                    14.0f, 14.0f, shiftEdgeDissolvePaint);
+
+            shiftEdgeDissolveStrokePaint.setColor(TEXT_COLOR_WHITE);
+            shiftEdgeDissolveStrokePaint.setStrokeWidth(Math.max(2.0f, (1.0f - progress) * 6.5f));
+            shiftEdgeDissolveStrokePaint.setAlpha(Math.max(18, alpha - 56));
+            canvas.drawLine(left, top, right, bottom, shiftEdgeDissolveStrokePaint);
+            canvas.drawLine(left, bottom, right, top, shiftEdgeDissolveStrokePaint);
+
+            String text = levelPruneTexts[i];
+            if (text != null && !text.isEmpty()) {
+                levelPruneDrawRect.left = (int) left;
+                levelPruneDrawRect.top = (int) top;
+                levelPruneDrawRect.right = (int) right;
+                levelPruneDrawRect.bottom = (int) bottom;
+                shiftEdgeDissolveTextPaint.setTextSize(getTextSize(text));
+                shiftEdgeDissolveTextPaint.setAlpha(Math.max(12, alpha - 92));
+                canvas.drawText(text,
+                        getTextPosX(levelPruneDrawRect, text, shiftEdgeDissolveTextPaint),
+                        getTextPosY(levelPruneDrawRect, shiftEdgeDissolveTextPaint),
+                        shiftEdgeDissolveTextPaint);
+            }
+        }
+    }
+
     private void drawBonusAnimation(Canvas canvas) {
         bonusWinDrawable.setBounds(bonusWinRect);
         bonusWinDrawable.draw(canvas);
     }
 
     private void drawLevelAnimation(Canvas canvas) {
-        levelAnimationPaint.setTextSize(3 * levelAnimationCounter);
-        canvas.drawText(levelText, getApproxXToCenterText(levelText, levelAnimationPaint, canvasWidth), canvasHeight / 2.0f, levelAnimationPaint);
+        float mainTextSize = 3.0f * levelAnimationCounter;
+        levelAnimationPaint.setTextSize(mainTextSize);
+        float mainY = canvasHeight / 2.0f;
+        canvas.drawText(levelText, getApproxXToCenterText(levelText, levelAnimationPaint, canvasWidth), mainY, levelAnimationPaint);
+
+        if (levelHintText != null && !levelHintText.isEmpty()) {
+            float hintTextSize = Math.max(26.0f, Math.min(56.0f, mainTextSize * 0.24f));
+            levelHintPaint.setTextSize(hintTextSize);
+            int hintAlpha = Math.max(110, Math.min(255, 90 + levelAnimationCounter));
+            levelHintPaint.setAlpha(hintAlpha);
+            float hintY = mainY + Math.max(58.0f, mainTextSize * 0.56f);
+            canvas.drawText(levelHintText,
+                    getApproxXToCenterText(levelHintText, levelHintPaint, canvasWidth),
+                    hintY,
+                    levelHintPaint);
+        }
     }
 
     private void drawScoreAndLevelInfo(Canvas canvas) {
@@ -1034,6 +1185,7 @@ public class GameBoard {
         highlightRect = new Rect();
         shiftBonusDrawRect = new Rect();
         lineDissolveDrawRect = new Rect();
+        levelPruneDrawRect = new Rect();
     }
 
     private Rect createBonusIconRect(int row, int col, int gridTop) {
@@ -1111,9 +1263,17 @@ public class GameBoard {
             animateLineDissolveBonus();
             return;
         }
+        if (levelPruneAnimationRunning) {
+            animateLevelPruneAnimation();
+            return;
+        }
         if (status == statusT.BONUS_SHIFT_ANIMATION) {
             animateShiftBonus();
             return;
+        }
+
+        if (shiftSelectionActive) {
+            shiftSelectionPulseTick = (shiftSelectionPulseTick + 1) % SHIFT_SELECTION_PULSE_CYCLE;
         }
 
 
@@ -1172,7 +1332,7 @@ public class GameBoard {
     private void handleNewCellDropIns() {
         if (dropInCount > 0 && !dropInAnimationRunning) {
 
-            Coord c = gameBoardArray.randomlyAddCell(level - 1, 2 + level);
+            Coord c = gameBoardArray.randomlyAddCell(getCurrentMinSpawnIndex(), getCurrentMaxSpawnIndex());
 
             dropInCount--;
             targetPositionX = c.x;
@@ -1412,6 +1572,60 @@ public class GameBoard {
         }
     }
 
+    private void startLevelPruneAnimation(List<Coord> cellsToRemove) {
+        levelPruneAnimationRunning = true;
+        levelPruneAnimationCounter = LEVEL_PRUNE_ANIMATION_DURATION;
+
+        int length = cellsToRemove.size();
+        levelPruneCoords = new Coord[length];
+        levelPruneRects = new Rect[length];
+        levelPrunePaints = new Paint[length];
+        levelPruneTexts = new String[length];
+
+        for (int i = 0; i < length; i++) {
+            Coord coord = cellsToRemove.get(i);
+            levelPruneCoords[i] = new Coord(coord);
+            levelPruneRects[i] = new Rect(rectArray[coord.x][coord.y]);
+            Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
+            p.setColor(paintArray[coord.x][coord.y].getColor());
+            levelPrunePaints[i] = p;
+            levelPruneTexts[i] = getText(coord.x, coord.y);
+        }
+    }
+
+    private void animateLevelPruneAnimation() {
+        levelPruneAnimationCounter--;
+        if (levelPruneAnimationCounter <= 0) {
+            finishLevelPruneAnimation();
+        }
+    }
+
+    private void finishLevelPruneAnimation() {
+        if (levelPruneCoords != null) {
+            for (Coord coord : levelPruneCoords) {
+                if (coord == null) {
+                    continue;
+                }
+                gameBoardArray.set(coord.x, coord.y, -1);
+                paintArray[coord.x][coord.y].setColor(getColor(coord.x, coord.y));
+            }
+        }
+
+        levelPruneAnimationRunning = false;
+        levelPruneCoords = null;
+        levelPruneRects = null;
+        levelPrunePaints = null;
+        levelPruneTexts = null;
+
+        if (status == statusT.SELECT_TARGET_POSITION
+                && gameBoardArray.get(startPositionX, startPositionY) == -1) {
+            resetCell(startPositionX, startPositionY);
+            status = statusT.SELECT_START_POSITION;
+        }
+
+        ensureBoardCanRefillIfEmpty();
+    }
+
     private void finishLineDissolveAnimation() {
         lineDissolveAnimationRunning = false;
         lineDissolveRects = null;
@@ -1430,14 +1644,17 @@ public class GameBoard {
         updateBonusValues();
     }
 
-    private void startShiftBonusAnimation(boolean isRow, int lineIndex) {
+    private void startShiftBonusAnimation(boolean isRow, int lineIndex, int directionSign) {
         shiftBonusAnimationIsRow = isRow;
         shiftBonusLineIndex = lineIndex;
+        shiftBonusDirectionSign = directionSign >= 0 ? 1 : -1;
         shiftBonusAnimationCounter = SHIFT_BONUS_ANIMATION_STEPS;
         shiftBonusOffsetX = 0.0f;
         shiftBonusOffsetY = 0.0f;
-        shiftBonusStepX = isRow ? cellWidth / SHIFT_BONUS_ANIMATION_STEPS : 0.0f;
-        shiftBonusStepY = isRow ? 0.0f : cellHeight / SHIFT_BONUS_ANIMATION_STEPS;
+        shiftBonusStepX = isRow ? shiftBonusDirectionSign * cellWidth / SHIFT_BONUS_ANIMATION_STEPS : 0.0f;
+        shiftBonusStepY = isRow ? 0.0f : shiftBonusDirectionSign * cellHeight / SHIFT_BONUS_ANIMATION_STEPS;
+
+        clearShiftSelection();
 
         int length = isRow ? width : height;
         shiftBonusValues = new int[length];
@@ -1475,15 +1692,28 @@ public class GameBoard {
 
     private void finishShiftBonusAnimation() {
         int length = shiftBonusAnimationIsRow ? width : height;
-        for (int i = length - 1; i >= 1; i--) {
-            int shiftedValue = shiftBonusValues[i - 1];
-            if (shiftedValue == -1) {
-                continue;
+        if (shiftBonusDirectionSign >= 0) {
+            for (int i = length - 1; i >= 1; i--) {
+                int shiftedValue = shiftBonusValues[i - 1];
+                if (shiftedValue == -1) {
+                    continue;
+                }
+                int x = shiftBonusAnimationIsRow ? i : shiftBonusLineIndex;
+                int y = shiftBonusAnimationIsRow ? shiftBonusLineIndex : i;
+                gameBoardArray.set(x, y, shiftedValue);
+                paintArray[x][y].setColor(getColor(x, y));
             }
-            int x = shiftBonusAnimationIsRow ? i : shiftBonusLineIndex;
-            int y = shiftBonusAnimationIsRow ? shiftBonusLineIndex : i;
-            gameBoardArray.set(x, y, shiftedValue);
-            paintArray[x][y].setColor(getColor(x, y));
+        } else {
+            for (int i = 0; i < length - 1; i++) {
+                int shiftedValue = shiftBonusValues[i + 1];
+                if (shiftedValue == -1) {
+                    continue;
+                }
+                int x = shiftBonusAnimationIsRow ? i : shiftBonusLineIndex;
+                int y = shiftBonusAnimationIsRow ? shiftBonusLineIndex : i;
+                gameBoardArray.set(x, y, shiftedValue);
+                paintArray[x][y].setColor(getColor(x, y));
+            }
         }
 
         if (shiftBonusAnimationIsRow) {
@@ -1498,6 +1728,7 @@ public class GameBoard {
         shiftBonusRects = null;
         shiftBonusPaints = null;
         shiftBonusTexts = null;
+        shiftBonusDirectionSign = 1;
         status = statusT.SELECT_START_POSITION;
         updateBonusValues();
     }
@@ -1520,20 +1751,41 @@ public class GameBoard {
 
         long now = System.currentTimeMillis();
         if (now - secretCodeLastTapMs > SECRET_CODE_TAP_TIMEOUT_MS) {
-            secretCodeProgress = 0;
+            resetSecretCodeProgress();
         }
         secretCodeLastTapMs = now;
 
-        if (SECRET_CODE_SEQUENCE[secretCodeProgress] == tappedCard) {
-            secretCodeProgress++;
-            if (secretCodeProgress == SECRET_CODE_SEQUENCE.length) {
-                secretCodeProgress = 0;
-                grantAllBonusesForTesting();
+        for (int i = 0; i < SECRET_CODE_SEQUENCES.length; i++) {
+            int[] sequence = SECRET_CODE_SEQUENCES[i];
+            secretCodeProgress[i] = advanceSecretCodeProgress(secretCodeProgress[i], sequence, tappedCard);
+            if (secretCodeProgress[i] == sequence.length) {
+                resetSecretCodeProgress();
+                if (i == 0) {
+                    grantAllBonusesForTesting();
+                } else {
+                    grantLevelUpTestPoints();
+                }
+                return true;
             }
-        } else {
-            secretCodeProgress = (SECRET_CODE_SEQUENCE[0] == tappedCard) ? 1 : 0;
         }
         return true;
+    }
+
+    private int advanceSecretCodeProgress(int currentProgress, int[] sequence, int tappedCard) {
+        if (sequence[currentProgress] == tappedCard) {
+            return currentProgress + 1;
+        }
+        return (sequence[0] == tappedCard) ? 1 : 0;
+    }
+
+    private void resetSecretCodeProgress() {
+        if (secretCodeProgress == null || secretCodeProgress.length != SECRET_CODE_SEQUENCES.length) {
+            secretCodeProgress = new int[SECRET_CODE_SEQUENCES.length];
+            return;
+        }
+        for (int i = 0; i < secretCodeProgress.length; i++) {
+            secretCodeProgress[i] = 0;
+        }
     }
 
     private int getStatusCardTapIndex(int x, int y) {
@@ -1556,6 +1808,20 @@ public class GameBoard {
         for (int i = 0; i < BONUS_BUY_COSTS.length; i++) {
             addBonusCount(i, 1);
         }
+        lockHighscoreByCheatIfNeeded();
+        // Subtle feedback that the hidden code was accepted.
+        alertAnimationCounter = ALERT_TIME / 2;
+    }
+
+    private void grantLevelUpTestPoints() {
+        score = safeAdd(score, SECRET_CODE_SCORE_BOOST_AMOUNT);
+        lockHighscoreByCheatIfNeeded();
+        applyProgressionAfterScoreChange();
+        // Reuse alert pulse as subtle confirmation for hidden test command.
+        alertAnimationCounter = ALERT_TIME / 2;
+    }
+
+    private void lockHighscoreByCheatIfNeeded() {
         if (!highscoreLockedByCheat) {
             highscoreLockedByCheat = true;
             highscoreExceeded = false;
@@ -1563,8 +1829,6 @@ public class GameBoard {
             editor.putBoolean(PREF_KEY_HIGHSCORE_LOCKED_BY_CHEAT, true);
             editor.apply();
         }
-        // Subtle feedback that the hidden code was accepted.
-        alertAnimationCounter = ALERT_TIME / 2;
     }
 
     private void animateDropIn() {
@@ -1680,6 +1944,14 @@ public class GameBoard {
     private void startLevelAnimation() {
         levelAnimationCounter = LEVEL_ANIMATION_DURATION;
         levelText = "Level: " + level;
+        levelHintText = getNextLevelHintText();
+    }
+
+    private String getNextLevelHintText() {
+        int nextLevel = level + 1;
+        long targetScore = getLevelThreshold(nextLevel);
+        long remainingScore = Math.max(0L, targetScore - score);
+        return "Next L" + nextLevel + " at " + getScoreText(targetScore) + " (" + getScoreText(remainingScore) + " left)";
     }
 
     private void animateLevel() {
@@ -1691,7 +1963,50 @@ public class GameBoard {
 
     private void finishLevelAnimation() {
         updateBonusValues();
-        gameBoardArray.removeAllCellsSmallerThan(level);
+        ensureBoardCanRefillIfEmpty();
+    }
+
+    private int getCurrentMinSpawnIndex() {
+        return LevelProgression.getMinSpawnIndex(level);
+    }
+
+    private int getCurrentMaxSpawnIndex() {
+        return LevelProgression.getMaxSpawnIndex(level);
+    }
+
+    private void applyCurrentLevelProgression() {
+        int minSpawnIndex = getCurrentMinSpawnIndex();
+        List<Coord> cellsToRemove = new ArrayList<>();
+        for (int y = 0; y < height; y++) {
+            for (int x = 0; x < width; x++) {
+                int value = gameBoardArray.get(x, y);
+                if (value != -1 && value < minSpawnIndex) {
+                    cellsToRemove.add(new Coord(x, y));
+                }
+            }
+        }
+
+        if (cellsToRemove.isEmpty()) {
+            ensureBoardCanRefillIfEmpty();
+            return;
+        }
+
+        startLevelPruneAnimation(cellsToRemove);
+    }
+
+    private void ensureBoardCanRefillIfEmpty() {
+        if (gameBoardArray.getNumFreeCells() != width * height) {
+            return;
+        }
+
+        dropInCount = Math.max(dropInCount, DROP_INS_AFTER_MOTION);
+        if (status == statusT.SELECT_TARGET_POSITION) {
+            resetCell(startPositionX, startPositionY);
+            status = statusT.SELECT_START_POSITION;
+        }
+        if (status == statusT.SELECT_START_POSITION) {
+            status = statusT.DROP_IN_NEW_CELLS;
+        }
     }
 
 
@@ -1803,6 +2118,7 @@ public class GameBoard {
             leveledUp = true;
         }
         if (leveledUp) {
+            applyCurrentLevelProgression();
             startLevelAnimation();
         }
 
@@ -1891,8 +2207,29 @@ public class GameBoard {
     }
 
     public void onTouchEvent(int x, int y) {
+        onTouchEvent(MotionEvent.ACTION_DOWN, x, y);
+    }
 
-        if (dissolveAnimationRunning || lineDissolveAnimationRunning || status == statusT.BONUS_SHIFT_ANIMATION) {
+    public void onTouchEvent(int action, int x, int y) {
+
+        if (action == MotionEvent.ACTION_DOWN) {
+            touchDownX = x;
+            touchDownY = y;
+        }
+
+        if (action == MotionEvent.ACTION_UP) {
+            if (tryHandleShiftSwipeGesture(x, y)) {
+                updateBonusValues();
+                return;
+            }
+            return;
+        }
+
+        if (action != MotionEvent.ACTION_DOWN) {
+            return;
+        }
+
+        if (dissolveAnimationRunning || lineDissolveAnimationRunning || levelPruneAnimationRunning || status == statusT.BONUS_SHIFT_ANIMATION) {
             return;
         }
 
@@ -1986,6 +2323,33 @@ public class GameBoard {
         }
     }
 
+    private boolean tryHandleShiftSwipeGesture(int x, int y) {
+        if (!shiftSelectionActive || status != statusT.SELECT_START_POSITION) {
+            return false;
+        }
+
+        int deltaX = x - touchDownX;
+        int deltaY = y - touchDownY;
+        float minSwipeX = Math.max(28.0f, cellWidth * SHIFT_SELECTION_SWIPE_THRESHOLD_CELLS);
+        float minSwipeY = Math.max(28.0f, cellHeight * SHIFT_SELECTION_SWIPE_THRESHOLD_CELLS);
+
+        if (shiftSelectionIsRow) {
+            if (Math.abs(deltaX) < minSwipeX || Math.abs(deltaX) <= Math.abs(deltaY)) {
+                return false;
+            }
+            int directionSign = deltaX > 0 ? 1 : -1;
+            startShiftBonusAnimation(true, shiftSelectionLineIndex, directionSign);
+            return true;
+        }
+
+        if (Math.abs(deltaY) < minSwipeY || Math.abs(deltaY) <= Math.abs(deltaX)) {
+            return false;
+        }
+        int directionSign = deltaY > 0 ? 1 : -1;
+        startShiftBonusAnimation(false, shiftSelectionLineIndex, directionSign);
+        return true;
+    }
+
     private boolean handleBoardBonusTap(int indexX, int indexY, int cellValue) {
         if (dissolveSelected) {
             if (cellValue != -1) {
@@ -2007,16 +2371,29 @@ public class GameBoard {
         }
 
         if (shiftRowSelected) {
-            startShiftBonusAnimation(true, indexY);
+            selectShiftLine(true, indexY);
             return true;
         }
 
         if (shiftColSelected) {
-            startShiftBonusAnimation(false, indexX);
+            selectShiftLine(false, indexX);
             return true;
         }
 
         return false;
+    }
+
+    private void selectShiftLine(boolean isRow, int lineIndex) {
+        shiftSelectionActive = true;
+        shiftSelectionIsRow = isRow;
+        shiftSelectionLineIndex = lineIndex;
+        shiftSelectionPulseTick = 0;
+    }
+
+    private void clearShiftSelection() {
+        shiftSelectionActive = false;
+        shiftSelectionLineIndex = -1;
+        shiftSelectionPulseTick = 0;
     }
 
     private void startDropInsIfBoardEmpty() {
@@ -2168,6 +2545,7 @@ public class GameBoard {
         delColSelected = false;
         shiftRowSelected = false;
         shiftColSelected = false;
+        clearShiftSelection();
     }
 
     private void invertMotionPath() {
