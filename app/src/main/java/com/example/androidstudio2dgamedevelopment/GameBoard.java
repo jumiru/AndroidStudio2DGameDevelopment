@@ -176,6 +176,7 @@ public class GameBoard {
     private long nextScoreForBonus;
     private long chainScoreProduct;
     private int chainLength;
+    private boolean boardWideMergeScanActive;
 
     private final Paint textPaint;
     private final Paint scoreAndLevelPaint;
@@ -1362,12 +1363,16 @@ public class GameBoard {
                     targetPositionY = swap2ndMergePositionY;
                     status = statusT.MERGE; // do merge for the swap target position too
                 } else {
+                    if (boardWideMergeScanActive && startBoardWideMergeIfAvailable()) {
+                        return;
+                    }
+                    boardWideMergeScanActive = false;
                     finalizeChainScoreIfNeeded();
                     status = statusT.DROP_IN_NEW_CELLS;
                 }
             }
             int freeCells = gameBoardArray.getNumFreeCells();
-            if (freeCells == 0) {
+            if (freeCells == 0 && !(boardWideMergeScanActive && status == statusT.MERGE)) {
                 finalizeChainScoreIfNeeded();
                 status = statusT.GAME_OVER;
             }
@@ -1640,7 +1645,7 @@ public class GameBoard {
             delColSelected = false;
         }
 
-        startDropInsIfBoardEmpty();
+        continueAfterBonusBoardMutation();
         updateBonusValues();
     }
 
@@ -1729,7 +1734,7 @@ public class GameBoard {
         shiftBonusPaints = null;
         shiftBonusTexts = null;
         shiftBonusDirectionSign = 1;
-        status = statusT.SELECT_START_POSITION;
+        continueAfterBonusBoardMutation();
         updateBonusValues();
     }
 
@@ -1739,7 +1744,7 @@ public class GameBoard {
         paintArray[dissolveTargetX][dissolveTargetY].setColor(getColor(dissolveTargetX, dissolveTargetY));
         dissolveCounter--;
         dissolveSelected = false;
-        startDropInsIfBoardEmpty();
+        continueAfterBonusBoardMutation();
         updateBonusValues();
     }
 
@@ -2403,6 +2408,32 @@ public class GameBoard {
         } else {
             status = statusT.SELECT_START_POSITION;
         }
+    }
+
+    private void continueAfterBonusBoardMutation() {
+        boardWideMergeScanActive = true;
+        if (!startBoardWideMergeIfAvailable()) {
+            boardWideMergeScanActive = false;
+            startDropInsIfBoardEmpty();
+        }
+    }
+
+    private boolean startBoardWideMergeIfAvailable() {
+        for (int y = 0; y < height; y++) {
+            for (int x = 0; x < width; x++) {
+                if (gameBoardArray.get(x, y) == -1) {
+                    continue;
+                }
+                Set<Coord> group = merge(x, y);
+                if (group.size() >= MIN_COMBO_SIZE) {
+                    targetPositionX = x;
+                    targetPositionY = y;
+                    status = statusT.MERGE;
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     private boolean handleBonusBarTap(int x, int y) {
