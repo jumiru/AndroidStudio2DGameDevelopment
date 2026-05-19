@@ -256,6 +256,7 @@ public class GameBoard {
     private int lineSelectionRow;
     private int lineSelectionCol;
     private int shiftSelectionPulseTick;
+    private int gravitySelectionPulseTick;
     // color clear bonus animation
     private boolean colorClearAnimationRunning;
     private int colorClearAnimationCounter;
@@ -275,6 +276,7 @@ public class GameBoard {
     private int[] gravityAnimDestY;
     private Rect gravityAnimDrawRect;
     private final Paint shiftSelectionPulsePaint;
+    private final Paint gravitySelectionPulsePaint;
     private int touchDownX;
     private int touchDownY;
     private final Paint shiftEdgeDissolvePaint;
@@ -501,6 +503,10 @@ public class GameBoard {
         shiftSelectionPulsePaint.setStyle(Paint.Style.STROKE);
         shiftSelectionPulsePaint.setColor(0xfff7d774);
 
+        gravitySelectionPulsePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        gravitySelectionPulsePaint.setStyle(Paint.Style.STROKE);
+        gravitySelectionPulsePaint.setColor(BONUS_ACCENT_COLORS[7]);
+
         statusPanelRect = new RectF();
         bonusSlotRect = new RectF();
 
@@ -564,6 +570,7 @@ public class GameBoard {
         lineSelectionRow = -1;
         lineSelectionCol = -1;
         shiftSelectionPulseTick = 0;
+        gravitySelectionPulseTick = 0;
         touchDownX = 0;
         touchDownY = 0;
         lineDissolveAnimationRunning = false;
@@ -628,6 +635,7 @@ public class GameBoard {
 
         drawGameboard(canvas);
         drawLineSelectionPulse(canvas);
+        drawGravitySelectionOverlay(canvas);
         drawMotionRect(canvas);
         drawMergeRects(canvas);
         drawShiftBonusAnimation(canvas);
@@ -689,6 +697,20 @@ public class GameBoard {
         for (int i = 0; i < height; i++) {
             Rect cellRect = rectArray[lineSelectionCol][i];
             if (cellRect != null) canvas.drawRect(cellRect, shiftSelectionPulsePaint);
+        }
+    }
+
+    private void drawGravitySelectionOverlay(Canvas canvas) {
+        if (!gravitySelected) return;
+        float pulse = (float) (Math.sin((2.0f * Math.PI * gravitySelectionPulseTick) / SHIFT_SELECTION_PULSE_CYCLE) * 0.5f + 0.5f);
+        gravitySelectionPulsePaint.setStrokeWidth(4.0f + 8.0f * pulse);
+        gravitySelectionPulsePaint.setAlpha(80 + (int) (150.0f * pulse));
+        for (int x = 0; x < width; x++) {
+            for (int y = 0; y < height; y++) {
+                if (gameBoardArray.get(x, y) != -1 && rectArray[x][y] != null) {
+                    canvas.drawRect(rectArray[x][y], gravitySelectionPulsePaint);
+                }
+            }
         }
     }
 
@@ -1322,6 +1344,9 @@ public class GameBoard {
         if (lineSelectionActive) {
             shiftSelectionPulseTick = (shiftSelectionPulseTick + 1) % SHIFT_SELECTION_PULSE_CYCLE;
         }
+        if (gravitySelected) {
+            gravitySelectionPulseTick = (gravitySelectionPulseTick + 1) % SHIFT_SELECTION_PULSE_CYCLE;
+        }
 
 
         //-----------------------------------------------------
@@ -1851,6 +1876,7 @@ public class GameBoard {
         gravityAnimationCounter  = GRAVITY_ANIMATION_STEPS;
         gravityCounter--;
         gravitySelected = false;
+        gravitySelectionPulseTick = 0;
         return true;
     }
 
@@ -2602,7 +2628,7 @@ public class GameBoard {
     }
 
     private boolean tryHandleShiftSwipeGesture(int x, int y) {
-        if (!lineSelectionActive || status != statusT.SELECT_START_POSITION) {
+        if ((!lineSelectionActive && !gravitySelected) || status != statusT.SELECT_START_POSITION) {
             return false;
         }
 
@@ -2878,6 +2904,7 @@ public class GameBoard {
         shiftLineSelected = false;
         colorClearSelected = false;
         gravitySelected = false;
+        gravitySelectionPulseTick = 0;
         clearLineSelection();
     }
 
