@@ -91,50 +91,50 @@ public class GameBoard {
 
     private static final int MIN_COMBO_SIZE = 4;
     private static final long BASE_COMBO_SCORE = 4L;
-    private static final long BASE_LEVEL_SCORE = 100L;
-    private static final long BASE_BONUS_STEP = 100L;
-    private static final long BONUS_STEP_PER_LEVEL = 50L;
+    private static final long BASE_LEVEL_SCORE = 75L;
+    private static final long BASE_BONUS_STEP = 75L;
+    private static final long BONUS_STEP_PER_LEVEL = 40L;
     private static final long BUY_COST_UNDO = 600L;
     private static final long BUY_COST_SWAP = 1200L;
     private static final long BUY_COST_JUMP = 1900L;
     private static final long BUY_COST_DISSOLVE = 900L;
     private static final long BUY_COST_DEL_LINE = 2400L;
-    private static final long BUY_COST_SHIFT_LINE = 1500L;
+    private static final long BUY_COST_SHIFT_LINE = 1700L;
     private static final long BUY_COST_COLOR_CLEAR = 3000L;
-    private static final long BUY_COST_GRAVITY = 1700L;
+    private static final long BUY_COST_GRAVITY = 1500L;
     private static final int GRAVITY_ANIMATION_STEPS = 14;
     private static final int BONUS_AWARD_AMOUNT = 1;
     private static final double BONUS_COUNT_DAMPING = 0.5d;
     // Bonus order must stay in sync with counters, icons, buy buttons and animation handling.
     private static final long[] BONUS_BUY_COSTS = {
             BUY_COST_UNDO,
-            BUY_COST_SWAP,
-            BUY_COST_JUMP,
             BUY_COST_DISSOLVE,
-            BUY_COST_DEL_LINE,
+            BUY_COST_SWAP,
+            BUY_COST_GRAVITY,
             BUY_COST_SHIFT_LINE,
-            BUY_COST_COLOR_CLEAR,
-            BUY_COST_GRAVITY
+            BUY_COST_JUMP,
+            BUY_COST_DEL_LINE,
+            BUY_COST_COLOR_CLEAR
     };
     private static final int[] BONUS_DRAWABLE_IDS = {
             R.drawable.undo_circle_icon,
-            R.drawable.swap_icon,
-            R.drawable.jump_icon,
             R.drawable.delete_block_icon,
-            R.drawable.delete_line_icon,
+            R.drawable.swap_icon,
+            R.drawable.gravity_icon,
             R.drawable.shift_line_icon,
-            R.drawable.color_clear_icon,
-            R.drawable.gravity_icon
+            R.drawable.jump_icon,
+            R.drawable.delete_line_icon,
+            R.drawable.color_clear_icon
     };
     private static final int[] BONUS_ACCENT_COLORS = {
-            0xff66d8ff,
-            0xff91a8ff,
-            0xff9be27c,
-            0xffff9f6b,
-            0xffff7f7f,
-            0xffbd8bff,
-            0xffffb0df,
-            0xff40d4c8
+            0xff66d8ff, // undo
+            0xffff9f6b, // dissolve
+            0xff91a8ff, // swap
+            0xff40d4c8, // gravity
+            0xffbd8bff, // shift_line
+            0xff9be27c, // jump
+            0xffff7f7f, // del_line
+            0xffffb0df  // color_clear
     };
 
     public enum directionT {
@@ -329,6 +329,7 @@ public class GameBoard {
 
     // bonus actions
     private int bonusIconWidth;
+    private int bonusIconWidthLarge;
     private int bonusSlotWidth;
     private int bonusSlotHeight;
     private int buyButtonHeight;
@@ -1017,13 +1018,13 @@ public class GameBoard {
 
     private void drawBonusInformation(Canvas canvas) {
         drawBonusSlot(canvas, undo, undoRect, undoText, undoBuyRect, BUY_COST_UNDO, BONUS_ACCENT_COLORS[0], undoSelected, bonusSlotWidth);
-        drawBonusSlot(canvas, swap, swapRect, swapText, swapBuyRect, BUY_COST_SWAP, BONUS_ACCENT_COLORS[1], swapSelected, bonusSlotWidth);
-        drawBonusSlot(canvas, jump, jumpRect, jumpText, jumpBuyRect, BUY_COST_JUMP, BONUS_ACCENT_COLORS[2], jumpSelected, bonusSlotWidth);
-        drawBonusSlot(canvas, dissolve, dissolveRect, dissolveText, dissolveBuyRect, BUY_COST_DISSOLVE, BONUS_ACCENT_COLORS[3], dissolveSelected, bonusSlotWidth);
-        drawBonusSlot(canvas, delLine, delLineRect, delLineText, delLineBuyRect, BUY_COST_DEL_LINE, BONUS_ACCENT_COLORS[4], delLineSelected, bonusSlotWidth);
-        drawBonusSlot(canvas, shiftLine, shiftLineRect, shiftLineText, shiftLineBuyRect, BUY_COST_SHIFT_LINE, BONUS_ACCENT_COLORS[5], shiftLineSelected, bonusSlotWidth);
-        drawBonusSlot(canvas, colorClearDrawable, colorClearRect, colorClearText, colorClearBuyRect, BUY_COST_COLOR_CLEAR, BONUS_ACCENT_COLORS[6], colorClearSelected, bonusSlotWidth);
-        drawBonusSlot(canvas, gravityIcon, gravityRect, gravityText, gravityBuyRect, BUY_COST_GRAVITY, BONUS_ACCENT_COLORS[7], gravitySelected, bonusSlotWidth);
+        drawBonusSlot(canvas, dissolve, dissolveRect, dissolveText, dissolveBuyRect, BUY_COST_DISSOLVE, BONUS_ACCENT_COLORS[1], dissolveSelected, bonusSlotWidth);
+        drawBonusSlot(canvas, swap, swapRect, swapText, swapBuyRect, BUY_COST_SWAP, BONUS_ACCENT_COLORS[2], swapSelected, bonusSlotWidth);
+        drawBonusSlot(canvas, gravityIcon, gravityRect, gravityText, gravityBuyRect, BUY_COST_GRAVITY, BONUS_ACCENT_COLORS[3], gravitySelected, bonusSlotWidth);
+        drawBonusSlot(canvas, shiftLine, shiftLineRect, shiftLineText, shiftLineBuyRect, BUY_COST_SHIFT_LINE, BONUS_ACCENT_COLORS[4], shiftLineSelected, bonusSlotWidth);
+        drawBonusSlot(canvas, jump, jumpRect, jumpText, jumpBuyRect, BUY_COST_JUMP, BONUS_ACCENT_COLORS[5], jumpSelected, bonusSlotWidth);
+        drawBonusSlot(canvas, delLine, delLineRect, delLineText, delLineBuyRect, BUY_COST_DEL_LINE, BONUS_ACCENT_COLORS[6], delLineSelected, bonusSlotWidth);
+        drawBonusSlot(canvas, colorClearDrawable, colorClearRect, colorClearText, colorClearBuyRect, BUY_COST_COLOR_CLEAR, BONUS_ACCENT_COLORS[7], colorClearSelected, bonusSlotWidth);
     }
 
     private void drawBonusSlot(Canvas canvas, Drawable icon, Rect iconRect, String countText, Rect buyRect,
@@ -1155,15 +1156,17 @@ public class GameBoard {
         buyButtonHeight = RECT_BORDER + BONUS_TEXT_SIZE + 4;
         int maxIconSize = Math.min(bonusSlotWidth - 6 * RECT_BORDER, bonusSlotHeight - buyButtonHeight - 6 * RECT_BORDER - BONUS_TEXT_SIZE);
         bonusIconWidth = (int) (Math.max(24, maxIconSize) * 0.96f);
+        int maxIconSizeLarge = bonusSlotHeight - buyButtonHeight - 4 * RECT_BORDER - BONUS_TEXT_SIZE;
+        bonusIconWidthLarge = Math.max(bonusIconWidth, maxIconSizeLarge);
 
-        undoRect = createBonusIconRect(0, 0, gridTop, bonusSlotWidth);
-        swapRect = createBonusIconRect(0, 1, gridTop, bonusSlotWidth);
-        jumpRect = createBonusIconRect(0, 2, gridTop, bonusSlotWidth);
-        dissolveRect = createBonusIconRect(0, 3, gridTop, bonusSlotWidth);
-        delLineRect = createBonusIconRect(1, 0, gridTop, bonusSlotWidth);
-        shiftLineRect = createBonusIconRect(1, 1, gridTop, bonusSlotWidth);
-        colorClearRect = createBonusIconRect(1, 2, gridTop, bonusSlotWidth);
-        gravityRect = createBonusIconRect(1, 3, gridTop, bonusSlotWidth);
+        undoRect      = createBonusIconRect(0, 0, gridTop, bonusSlotWidth, bonusIconWidth);
+        swapRect      = createBonusIconRect(0, 1, gridTop, bonusSlotWidth, bonusIconWidth);
+        jumpRect      = createBonusIconRect(0, 2, gridTop, bonusSlotWidth, bonusIconWidth);
+        dissolveRect  = createBonusIconRect(0, 3, gridTop, bonusSlotWidth, bonusIconWidthLarge);
+        delLineRect   = createBonusIconRect(1, 0, gridTop, bonusSlotWidth, bonusIconWidthLarge);
+        shiftLineRect = createBonusIconRect(1, 1, gridTop, bonusSlotWidth, bonusIconWidthLarge);
+        colorClearRect= createBonusIconRect(1, 2, gridTop, bonusSlotWidth, bonusIconWidthLarge);
+        gravityRect   = createBonusIconRect(1, 3, gridTop, bonusSlotWidth, bonusIconWidthLarge);
 
         undoSlotRect = createBonusSlotRect(0, 0, gridTop, bonusSlotWidth);
         swapSlotRect = createBonusSlotRect(0, 1, gridTop, bonusSlotWidth);
@@ -1249,12 +1252,12 @@ public class GameBoard {
         gravityAnimDrawRect = new Rect();
     }
 
-    private Rect createBonusIconRect(int row, int col, int gridTop, int slotWidth) {
+    private Rect createBonusIconRect(int row, int col, int gridTop, int slotWidth, int iconWidth) {
         int slotLeft = col * slotWidth;
         int rowTop = gridTop + row * bonusSlotHeight;
-        int iconLeft = slotLeft + (slotWidth - bonusIconWidth) / 2;
-        int iconTop = rowTop + 2 * RECT_BORDER;
-        return new Rect(iconLeft, iconTop, iconLeft + bonusIconWidth, iconTop + bonusIconWidth);
+        int iconLeft = slotLeft + (slotWidth - iconWidth) / 2;
+        int iconTop = rowTop + RECT_BORDER;
+        return new Rect(iconLeft, iconTop, iconLeft + iconWidth, iconTop + iconWidth);
     }
 
     private Rect createBuyRectForSlot(int row, int col, int gridTop, int slotWidth) {
@@ -2361,13 +2364,13 @@ public class GameBoard {
     private int getBonusCount(int index) {
         switch (index) {
             case 0: return undoCounter;
-            case 1: return swapCounter;
-            case 2: return jumpCounter;
-            case 3: return dissolveCounter;
-            case 4: return delLineCounter;
-            case 5: return shiftLineCounter;
-            case 6: return colorClearCounter;
-            case 7: return gravityCounter;
+            case 1: return dissolveCounter;
+            case 2: return swapCounter;
+            case 3: return gravityCounter;
+            case 4: return shiftLineCounter;
+            case 5: return jumpCounter;
+            case 6: return delLineCounter;
+            case 7: return colorClearCounter;
             default: return 0;
         }
     }
@@ -2378,25 +2381,25 @@ public class GameBoard {
                 undoCounter += amount;
                 break;
             case 1:
-                swapCounter += amount;
-                break;
-            case 2:
-                jumpCounter += amount;
-                break;
-            case 3:
                 dissolveCounter += amount;
                 break;
-            case 4:
-                delLineCounter += amount;
+            case 2:
+                swapCounter += amount;
                 break;
-            case 5:
+            case 3:
+                gravityCounter += amount;
+                break;
+            case 4:
                 shiftLineCounter += amount;
                 break;
+            case 5:
+                jumpCounter += amount;
+                break;
             case 6:
-                colorClearCounter += amount;
+                delLineCounter += amount;
                 break;
             case 7:
-                gravityCounter += amount;
+                colorClearCounter += amount;
                 break;
             default:
                 break;
