@@ -553,12 +553,14 @@ public class GameBoard {
 
         undoCounter = 0;
         swapCounter = 0;
-        jumpCounter = 1;
+        jumpCounter = 0;
         dissolveCounter = 0;
         delLineCounter = 0;
         shiftLineCounter = 0;
         colorClearCounter = 0;
         gravityCounter = 0;
+        addBonusCount(getWeightedRandomBonusIndex(), 1);
+        addBonusCount(getWeightedRandomBonusIndex(), 1);
 
         deselectAllBonuses();
         secretCodeProgress = new int[SECRET_CODE_SEQUENCES.length];
