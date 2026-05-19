@@ -1,0 +1,41 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="96dp"
+    android:height="96dp"
+    android:viewportWidth="96"
+    android:viewportHeight="96">
+    <!-- Corner context circles (different colors, small) -->
+    <path android:fillColor="#FF66D8FF"
+        android:pathData="M5,12 a7,7,0,1,0,14,0 a7,7,0,1,0,-14,0"/>
+    <path android:fillColor="#FF91A8FF"
+        android:pathData="M77,12 a7,7,0,1,0,14,0 a7,7,0,1,0,-14,0"/>
+    <path android:fillColor="#FF9BE27C"
+        android:pathData="M5,84 a7,7,0,1,0,14,0 a7,7,0,1,0,-14,0"/>
+    <path android:fillColor="#FFBD8BFF"
+        android:pathData="M77,84 a7,7,0,1,0,14,0 a7,7,0,1,0,-14,0"/>
+    <!-- Same-color compass circles (orange, r=10) -->
+    <path android:fillColor="#FFFF9F6B"
+        android:pathData="M38,10 a10,10,0,1,0,20,0 a10,10,0,1,0,-20,0"/>
+    <path android:fillColor="#FFFF9F6B"
+        android:pathData="M76,38 a10,10,0,1,0,20,0 a10,10,0,1,0,-20,0"/>
+    <path android:fillColor="#FFFF9F6B"
+        android:pathData="M38,86 a10,10,0,1,0,20,0 a10,10,0,1,0,-20,0"/>
+    <path android:fillColor="#FFFF9F6B"
+        android:pathData="M0,38 a10,10,0,1,0,20,0 a10,10,0,1,0,-20,0"/>
+    <!-- Large center circle (same orange, r=22) -->
+    <path android:fillColor="#FFFF9F6B"
+        android:pathData="M26,48 a22,22,0,1,0,44,0 a22,22,0,1,0,-44,0"/>
+    <!-- Bold X through center circle -->
+    <path android:strokeColor="#FFFFFFFF" android:strokeWidth="8"
+        android:fillColor="#00000000" android:pathData="M32,32 L64,64"/>
+    <path android:strokeColor="#FFFFFFFF" android:strokeWidth="8"
+        android:fillColor="#00000000" android:pathData="M64,32 L32,64"/>
+    <!-- X marks on compass circles -->
+    <path android:strokeColor="#FFFFFFFF" android:strokeWidth="3.5"
+        android:fillColor="#00000000" android:pathData="M40,2 L56,18 M56,2 L40,18"/>
+    <path android:strokeColor="#FFFFFFFF" android:strokeWidth="3.5"
+        android:fillColor="#00000000" android:pathData="M78,30 L94,46 M94,30 L78,46"/>
+    <path android:strokeColor="#FFFFFFFF" android:strokeWidth="3.5"
+        android:fillColor="#00000000" android:pathData="M40,78 L56,94 M56,78 L40,94"/>
+    <path android:strokeColor="#FFFFFFFF" android:strokeWidth="3.5"
+        android:fillColor="#00000000" android:pathData="M2,30 L18,46 M18,30 L2,46"/>
+</vector>

@@ -96,33 +96,35 @@ public class GameBoard {
     private static final long BONUS_STEP_PER_LEVEL = 50L;
     private static final long BUY_COST_UNDO = 600L;
     private static final long BUY_COST_SWAP = 1200L;
-    private static final long BUY_COST_JUMP = 1400L;
-    private static final long BUY_COST_DISSOLVE = 1000L;
-    private static final long BUY_COST_DEL_ROW = 1800L;
-    private static final long BUY_COST_DEL_COL = 1800L;
-    private static final long BUY_COST_SHIFT_ROW = 1300L;
-    private static final long BUY_COST_SHIFT_COL = 1300L;
-    private static final int BONUS_AWARD_AMOUNT = 2;
+    private static final long BUY_COST_JUMP = 1900L;
+    private static final long BUY_COST_DISSOLVE = 900L;
+    private static final long BUY_COST_DEL_LINE = 2400L;
+    private static final long BUY_COST_SHIFT_LINE = 1500L;
+    private static final long BUY_COST_COLOR_CLEAR = 3000L;
+    private static final long BUY_COST_GRAVITY = 1700L;
+    private static final int GRAVITY_ANIMATION_STEPS = 14;
+    private static final int BONUS_AWARD_AMOUNT = 1;
+    private static final double BONUS_COUNT_DAMPING = 0.5d;
     // Bonus order must stay in sync with counters, icons, buy buttons and animation handling.
     private static final long[] BONUS_BUY_COSTS = {
             BUY_COST_UNDO,
             BUY_COST_SWAP,
             BUY_COST_JUMP,
             BUY_COST_DISSOLVE,
-            BUY_COST_DEL_ROW,
-            BUY_COST_DEL_COL,
-            BUY_COST_SHIFT_ROW,
-            BUY_COST_SHIFT_COL
+            BUY_COST_DEL_LINE,
+            BUY_COST_SHIFT_LINE,
+            BUY_COST_COLOR_CLEAR,
+            BUY_COST_GRAVITY
     };
     private static final int[] BONUS_DRAWABLE_IDS = {
             R.drawable.undo_circle_icon,
             R.drawable.swap_icon,
             R.drawable.jump_icon,
             R.drawable.delete_block_icon,
-            R.drawable.delete_row_icon,
-            R.drawable.delete_col_icon,
-            R.drawable.shift_row_icon,
-            R.drawable.shift_col_icon
+            R.drawable.delete_line_icon,
+            R.drawable.shift_line_icon,
+            R.drawable.color_clear_icon,
+            R.drawable.gravity_icon
     };
     private static final int[] BONUS_ACCENT_COLORS = {
             0xff66d8ff,
@@ -130,9 +132,9 @@ public class GameBoard {
             0xff9be27c,
             0xffff9f6b,
             0xffff7f7f,
-            0xffff6aa6,
             0xffbd8bff,
-            0xfff7c65f
+            0xffffb0df,
+            0xff40d4c8
     };
 
     public enum directionT {
@@ -249,10 +251,29 @@ public class GameBoard {
     private Paint[] shiftBonusPaints;
     private String[] shiftBonusTexts;
     private Rect shiftBonusDrawRect;
-    private boolean shiftSelectionActive;
-    private boolean shiftSelectionIsRow;
-    private int shiftSelectionLineIndex;
+    // combined line selection state (used by DELETE_LINE and SHIFT_LINE)
+    private boolean lineSelectionActive;
+    private int lineSelectionRow;
+    private int lineSelectionCol;
     private int shiftSelectionPulseTick;
+    // color clear bonus animation
+    private boolean colorClearAnimationRunning;
+    private int colorClearAnimationCounter;
+    private Rect[] colorClearRects;
+    private Paint[] colorClearPaints;
+    private String[] colorClearTexts;
+    private Rect colorClearDrawRect;
+    // gravity bonus animation
+    private boolean gravityAnimationRunning;
+    private int gravityAnimationCounter;
+    private Rect[] gravityAnimStartRects;
+    private Rect[] gravityAnimEndRects;
+    private Paint[] gravityAnimPaints;
+    private String[] gravityAnimTexts;
+    private int[] gravityAnimValues;
+    private int[] gravityAnimDestX;
+    private int[] gravityAnimDestY;
+    private Rect gravityAnimDrawRect;
     private final Paint shiftSelectionPulsePaint;
     private int touchDownX;
     private int touchDownY;
@@ -312,6 +333,7 @@ public class GameBoard {
 
     private int animateBonusCounter;
     private int bonusWin;
+    private int bonusWin2 = -1;
     private Rect bonusWinRect;
     private Drawable bonusWinDrawable;
 
@@ -319,60 +341,60 @@ public class GameBoard {
     private Rect swapRect;
     private Rect jumpRect;
     private Rect dissolveRect;
-    private Rect delRowRect;
-    private Rect delColRect;
-    private Rect shiftRowRect;
-    private Rect shiftColRect;
+    private Rect delLineRect;
+    private Rect shiftLineRect;
+    private Rect colorClearRect;
+    private Rect gravityRect;
     private Rect undoSlotRect;
     private Rect swapSlotRect;
     private Rect jumpSlotRect;
     private Rect dissolveSlotRect;
-    private Rect delRowSlotRect;
-    private Rect delColSlotRect;
-    private Rect shiftRowSlotRect;
-    private Rect shiftColSlotRect;
+    private Rect delLineSlotRect;
+    private Rect shiftLineSlotRect;
+    private Rect colorClearSlotRect;
+    private Rect gravitySlotRect;
     private Rect undoBuyRect;
     private Rect swapBuyRect;
     private Rect jumpBuyRect;
     private Rect dissolveBuyRect;
-    private Rect delRowBuyRect;
-    private Rect delColBuyRect;
-    private Rect shiftRowBuyRect;
-    private Rect shiftColBuyRect;
+    private Rect delLineBuyRect;
+    private Rect shiftLineBuyRect;
+    private Rect colorClearBuyRect;
+    private Rect gravityBuyRect;
     private Drawable undo;
     private Drawable jump;
     private Drawable swap;
     private Drawable dissolve;
-    private Drawable delRow;
-    private Drawable delCol;
-    private Drawable shiftRow;
-    private Drawable shiftCol;
+    private Drawable delLine;
+    private Drawable shiftLine;
+    private Drawable colorClearDrawable;
+    private Drawable gravityIcon;
     private int undoCounter;
     private int swapCounter;
     private int jumpCounter;
     private int dissolveCounter;
-    private int delRowCounter;
-    private int delColCounter;
-    private int shiftRowCounter;
-    private int shiftColCounter;
+    private int delLineCounter;
+    private int shiftLineCounter;
+    private int colorClearCounter;
+    private int gravityCounter;
 
     private boolean undoSelected;
     private boolean swapSelected;
     private boolean jumpSelected;
     private boolean dissolveSelected;
-    private boolean delRowSelected;
-    private boolean delColSelected;
-    private boolean shiftRowSelected;
-    private boolean shiftColSelected;
+    private boolean delLineSelected;
+    private boolean shiftLineSelected;
+    private boolean colorClearSelected;
+    private boolean gravitySelected;
 
     private String undoText;
     private String swapText;
     private String jumpText;
     private String dissolveText;
-    private String delRowText;
-    private String delColText;
-    private String shiftRowText;
-    private String shiftColText;
+    private String delLineText;
+    private String shiftLineText;
+    private String colorClearText;
+    private String gravityText;
     private Paint buyPaint;
     private Paint buyBoxPaint;
     private Paint bonusSlotCardPaint;
@@ -526,10 +548,10 @@ public class GameBoard {
         swapCounter = 0;
         jumpCounter = 1;
         dissolveCounter = 0;
-        delRowCounter = 0;
-        delColCounter = 0;
-        shiftRowCounter = 0;
-        shiftColCounter = 0;
+        delLineCounter = 0;
+        shiftLineCounter = 0;
+        colorClearCounter = 0;
+        gravityCounter = 0;
 
         deselectAllBonuses();
         secretCodeProgress = new int[SECRET_CODE_SEQUENCES.length];
@@ -538,8 +560,9 @@ public class GameBoard {
         shiftBonusRects = null;
         shiftBonusPaints = null;
         shiftBonusTexts = null;
-        shiftSelectionActive = false;
-        shiftSelectionLineIndex = -1;
+        lineSelectionActive = false;
+        lineSelectionRow = -1;
+        lineSelectionCol = -1;
         shiftSelectionPulseTick = 0;
         touchDownX = 0;
         touchDownY = 0;
@@ -547,12 +570,21 @@ public class GameBoard {
         lineDissolveRects = null;
         lineDissolvePaints = null;
         lineDissolveTexts = null;
+        colorClearAnimationRunning = false;
+        colorClearRects = null;
+        colorClearPaints = null;
+        colorClearTexts = null;
+        gravityAnimationRunning = false;
+        gravityAnimStartRects = null;
+        gravityAnimEndRects = null;
+        gravityAnimPaints = null;
+        gravityAnimTexts = null;
         levelPruneAnimationRunning = false;
         levelPruneCoords = null;
         levelPruneRects = null;
         levelPrunePaints = null;
         levelPruneTexts = null;
-
+        bonusWin2 = -1;
 
         level = 1;
         levelText = "Level: " + level;
@@ -595,7 +627,7 @@ public class GameBoard {
         }
 
         drawGameboard(canvas);
-        drawShiftSelectionPulse(canvas);
+        drawLineSelectionPulse(canvas);
         drawMotionRect(canvas);
         drawMergeRects(canvas);
         drawShiftBonusAnimation(canvas);
@@ -613,6 +645,12 @@ public class GameBoard {
         }
         if (lineDissolveAnimationRunning) {
             drawLineDissolveAnimation(canvas);
+        }
+        if (colorClearAnimationRunning) {
+            drawColorClearAnimation(canvas);
+        }
+        if (gravityAnimationRunning) {
+            drawGravityAnimation(canvas);
         }
         if (levelPruneAnimationRunning) {
             drawLevelPruneAnimation(canvas);
@@ -633,8 +671,8 @@ public class GameBoard {
         canvas.drawRect(dropInRect, dropInAnimationPaint);
     }
 
-    private void drawShiftSelectionPulse(Canvas canvas) {
-        if (!shiftSelectionActive || status == statusT.BONUS_SHIFT_ANIMATION) {
+    private void drawLineSelectionPulse(Canvas canvas) {
+        if (!lineSelectionActive || status == statusT.BONUS_SHIFT_ANIMATION) {
             return;
         }
 
@@ -642,17 +680,15 @@ public class GameBoard {
         shiftSelectionPulsePaint.setStrokeWidth(4.0f + 8.0f * pulse);
         shiftSelectionPulsePaint.setAlpha(96 + (int) (140.0f * pulse));
 
-        int length = shiftSelectionIsRow ? width : height;
-        for (int i = 0; i < length; i++) {
-            int x = shiftSelectionIsRow ? i : shiftSelectionLineIndex;
-            int y = shiftSelectionIsRow ? shiftSelectionLineIndex : i;
-            if (x < 0 || x >= width || y < 0 || y >= height) {
-                continue;
-            }
-            Rect cellRect = rectArray[x][y];
-            if (cellRect != null) {
-                canvas.drawRect(cellRect, shiftSelectionPulsePaint);
-            }
+        // Draw the selected row
+        for (int i = 0; i < width; i++) {
+            Rect cellRect = rectArray[i][lineSelectionRow];
+            if (cellRect != null) canvas.drawRect(cellRect, shiftSelectionPulsePaint);
+        }
+        // Draw the selected column
+        for (int i = 0; i < height; i++) {
+            Rect cellRect = rectArray[lineSelectionCol][i];
+            if (cellRect != null) canvas.drawRect(cellRect, shiftSelectionPulsePaint);
         }
     }
 
@@ -958,18 +994,18 @@ public class GameBoard {
     }
 
     private void drawBonusInformation(Canvas canvas) {
-        drawBonusSlot(canvas, undo, undoRect, undoText, undoBuyRect, BUY_COST_UNDO, BONUS_ACCENT_COLORS[0], undoSelected);
-        drawBonusSlot(canvas, swap, swapRect, swapText, swapBuyRect, BUY_COST_SWAP, BONUS_ACCENT_COLORS[1], swapSelected);
-        drawBonusSlot(canvas, jump, jumpRect, jumpText, jumpBuyRect, BUY_COST_JUMP, BONUS_ACCENT_COLORS[2], jumpSelected);
-        drawBonusSlot(canvas, dissolve, dissolveRect, dissolveText, dissolveBuyRect, BUY_COST_DISSOLVE, BONUS_ACCENT_COLORS[3], dissolveSelected);
-        drawBonusSlot(canvas, delRow, delRowRect, delRowText, delRowBuyRect, BUY_COST_DEL_ROW, BONUS_ACCENT_COLORS[4], delRowSelected);
-        drawBonusSlot(canvas, delCol, delColRect, delColText, delColBuyRect, BUY_COST_DEL_COL, BONUS_ACCENT_COLORS[5], delColSelected);
-        drawBonusSlot(canvas, shiftRow, shiftRowRect, shiftRowText, shiftRowBuyRect, BUY_COST_SHIFT_ROW, BONUS_ACCENT_COLORS[6], shiftRowSelected);
-        drawBonusSlot(canvas, shiftCol, shiftColRect, shiftColText, shiftColBuyRect, BUY_COST_SHIFT_COL, BONUS_ACCENT_COLORS[7], shiftColSelected);
+        drawBonusSlot(canvas, undo, undoRect, undoText, undoBuyRect, BUY_COST_UNDO, BONUS_ACCENT_COLORS[0], undoSelected, bonusSlotWidth);
+        drawBonusSlot(canvas, swap, swapRect, swapText, swapBuyRect, BUY_COST_SWAP, BONUS_ACCENT_COLORS[1], swapSelected, bonusSlotWidth);
+        drawBonusSlot(canvas, jump, jumpRect, jumpText, jumpBuyRect, BUY_COST_JUMP, BONUS_ACCENT_COLORS[2], jumpSelected, bonusSlotWidth);
+        drawBonusSlot(canvas, dissolve, dissolveRect, dissolveText, dissolveBuyRect, BUY_COST_DISSOLVE, BONUS_ACCENT_COLORS[3], dissolveSelected, bonusSlotWidth);
+        drawBonusSlot(canvas, delLine, delLineRect, delLineText, delLineBuyRect, BUY_COST_DEL_LINE, BONUS_ACCENT_COLORS[4], delLineSelected, bonusSlotWidth);
+        drawBonusSlot(canvas, shiftLine, shiftLineRect, shiftLineText, shiftLineBuyRect, BUY_COST_SHIFT_LINE, BONUS_ACCENT_COLORS[5], shiftLineSelected, bonusSlotWidth);
+        drawBonusSlot(canvas, colorClearDrawable, colorClearRect, colorClearText, colorClearBuyRect, BUY_COST_COLOR_CLEAR, BONUS_ACCENT_COLORS[6], colorClearSelected, bonusSlotWidth);
+        drawBonusSlot(canvas, gravityIcon, gravityRect, gravityText, gravityBuyRect, BUY_COST_GRAVITY, BONUS_ACCENT_COLORS[7], gravitySelected, bonusSlotWidth);
     }
 
     private void drawBonusSlot(Canvas canvas, Drawable icon, Rect iconRect, String countText, Rect buyRect,
-                               long buyCost, int accentColor, boolean isSelected) {
+                               long buyCost, int accentColor, boolean isSelected, int slotWidth) {
         float slotTop = iconRect.top - 2.0f * RECT_BORDER;
         float slotBottom = buyRect.bottom + RECT_BORDER;
         bonusSlotRect.set(buyRect.left - RECT_BORDER, slotTop, buyRect.right + RECT_BORDER, slotBottom);
@@ -1000,12 +1036,12 @@ public class GameBoard {
         if (icon != null) {
             icon.draw(canvas);
         }
-        int countOffset = getApproxXToCenterText(countText, bonusPaint, bonusSlotWidth);
+        int countOffset = getApproxXToCenterText(countText, bonusPaint, slotWidth);
         canvas.drawText(countText, iconRect.left + countOffset, iconRect.bottom + bonusPaint.getTextSize(), bonusPaint);
 
         canvas.drawRect(buyRect, buyBoxPaint);
         String buyText = "+1 " + getScoreText(buyCost);
-        int buyOffset = getApproxXToCenterText(buyText, buyPaint, bonusSlotWidth);
+        int buyOffset = getApproxXToCenterText(buyText, buyPaint, slotWidth);
         canvas.drawText(buyText, buyRect.left + buyOffset, buyRect.bottom - RECT_BORDER, buyPaint);
     }
 
@@ -1098,32 +1134,32 @@ public class GameBoard {
         int maxIconSize = Math.min(bonusSlotWidth - 6 * RECT_BORDER, bonusSlotHeight - buyButtonHeight - 6 * RECT_BORDER - BONUS_TEXT_SIZE);
         bonusIconWidth = (int) (Math.max(24, maxIconSize) * 0.96f);
 
-        undoRect = createBonusIconRect(0, 0, gridTop);
-        swapRect = createBonusIconRect(0, 1, gridTop);
-        jumpRect = createBonusIconRect(0, 2, gridTop);
-        dissolveRect = createBonusIconRect(0, 3, gridTop);
-        delRowRect = createBonusIconRect(1, 0, gridTop);
-        delColRect = createBonusIconRect(1, 1, gridTop);
-        shiftRowRect = createBonusIconRect(1, 2, gridTop);
-        shiftColRect = createBonusIconRect(1, 3, gridTop);
+        undoRect = createBonusIconRect(0, 0, gridTop, bonusSlotWidth);
+        swapRect = createBonusIconRect(0, 1, gridTop, bonusSlotWidth);
+        jumpRect = createBonusIconRect(0, 2, gridTop, bonusSlotWidth);
+        dissolveRect = createBonusIconRect(0, 3, gridTop, bonusSlotWidth);
+        delLineRect = createBonusIconRect(1, 0, gridTop, bonusSlotWidth);
+        shiftLineRect = createBonusIconRect(1, 1, gridTop, bonusSlotWidth);
+        colorClearRect = createBonusIconRect(1, 2, gridTop, bonusSlotWidth);
+        gravityRect = createBonusIconRect(1, 3, gridTop, bonusSlotWidth);
 
-        undoSlotRect = createBonusSlotRect(0, 0, gridTop);
-        swapSlotRect = createBonusSlotRect(0, 1, gridTop);
-        jumpSlotRect = createBonusSlotRect(0, 2, gridTop);
-        dissolveSlotRect = createBonusSlotRect(0, 3, gridTop);
-        delRowSlotRect = createBonusSlotRect(1, 0, gridTop);
-        delColSlotRect = createBonusSlotRect(1, 1, gridTop);
-        shiftRowSlotRect = createBonusSlotRect(1, 2, gridTop);
-        shiftColSlotRect = createBonusSlotRect(1, 3, gridTop);
+        undoSlotRect = createBonusSlotRect(0, 0, gridTop, bonusSlotWidth);
+        swapSlotRect = createBonusSlotRect(0, 1, gridTop, bonusSlotWidth);
+        jumpSlotRect = createBonusSlotRect(0, 2, gridTop, bonusSlotWidth);
+        dissolveSlotRect = createBonusSlotRect(0, 3, gridTop, bonusSlotWidth);
+        delLineSlotRect = createBonusSlotRect(1, 0, gridTop, bonusSlotWidth);
+        shiftLineSlotRect = createBonusSlotRect(1, 1, gridTop, bonusSlotWidth);
+        colorClearSlotRect = createBonusSlotRect(1, 2, gridTop, bonusSlotWidth);
+        gravitySlotRect = createBonusSlotRect(1, 3, gridTop, bonusSlotWidth);
 
-        undoBuyRect = createBuyRectForSlot(0, 0, gridTop);
-        swapBuyRect = createBuyRectForSlot(0, 1, gridTop);
-        jumpBuyRect = createBuyRectForSlot(0, 2, gridTop);
-        dissolveBuyRect = createBuyRectForSlot(0, 3, gridTop);
-        delRowBuyRect = createBuyRectForSlot(1, 0, gridTop);
-        delColBuyRect = createBuyRectForSlot(1, 1, gridTop);
-        shiftRowBuyRect = createBuyRectForSlot(1, 2, gridTop);
-        shiftColBuyRect = createBuyRectForSlot(1, 3, gridTop);
+        undoBuyRect = createBuyRectForSlot(0, 0, gridTop, bonusSlotWidth);
+        swapBuyRect = createBuyRectForSlot(0, 1, gridTop, bonusSlotWidth);
+        jumpBuyRect = createBuyRectForSlot(0, 2, gridTop, bonusSlotWidth);
+        dissolveBuyRect = createBuyRectForSlot(0, 3, gridTop, bonusSlotWidth);
+        delLineBuyRect = createBuyRectForSlot(1, 0, gridTop, bonusSlotWidth);
+        shiftLineBuyRect = createBuyRectForSlot(1, 1, gridTop, bonusSlotWidth);
+        colorClearBuyRect = createBuyRectForSlot(1, 2, gridTop, bonusSlotWidth);
+        gravityBuyRect = createBuyRectForSlot(1, 3, gridTop, bonusSlotWidth);
 
         undo = ContextCompat.getDrawable(context, R.drawable.undo_circle_icon);
         if (undo != null) undo.setBounds(undoRect);
@@ -1137,17 +1173,17 @@ public class GameBoard {
         dissolve = ContextCompat.getDrawable(context, R.drawable.delete_block_icon);
         if (dissolve != null) dissolve.setBounds(dissolveRect);
 
-        delRow = ContextCompat.getDrawable(context, R.drawable.delete_row_icon);
-        if (delRow != null) delRow.setBounds(delRowRect);
+        delLine = ContextCompat.getDrawable(context, R.drawable.delete_line_icon);
+        if (delLine != null) delLine.setBounds(delLineRect);
 
-        delCol = ContextCompat.getDrawable(context, R.drawable.delete_col_icon);
-        if (delCol != null) delCol.setBounds(delColRect);
+        shiftLine = ContextCompat.getDrawable(context, R.drawable.shift_line_icon);
+        if (shiftLine != null) shiftLine.setBounds(shiftLineRect);
 
-        shiftRow = ContextCompat.getDrawable(context, R.drawable.shift_row_icon);
-        if (shiftRow != null) shiftRow.setBounds(shiftRowRect);
+        colorClearDrawable = ContextCompat.getDrawable(context, R.drawable.color_clear_icon);
+        if (colorClearDrawable != null) colorClearDrawable.setBounds(colorClearRect);
 
-        shiftCol = ContextCompat.getDrawable(context, R.drawable.shift_col_icon);
-        if (shiftCol != null) shiftCol.setBounds(shiftColRect);
+        gravityIcon = ContextCompat.getDrawable(context, R.drawable.gravity_icon);
+        if (gravityIcon != null) gravityIcon.setBounds(gravityRect);
 
         bonusPaint = new Paint();
         bonusPaint.setColor(TEXT_COLOR_WHITE);
@@ -1187,27 +1223,29 @@ public class GameBoard {
         shiftBonusDrawRect = new Rect();
         lineDissolveDrawRect = new Rect();
         levelPruneDrawRect = new Rect();
+        colorClearDrawRect = new Rect();
+        gravityAnimDrawRect = new Rect();
     }
 
-    private Rect createBonusIconRect(int row, int col, int gridTop) {
-        int slotLeft = col * bonusSlotWidth;
+    private Rect createBonusIconRect(int row, int col, int gridTop, int slotWidth) {
+        int slotLeft = col * slotWidth;
         int rowTop = gridTop + row * bonusSlotHeight;
-        int iconLeft = slotLeft + (bonusSlotWidth - bonusIconWidth) / 2;
+        int iconLeft = slotLeft + (slotWidth - bonusIconWidth) / 2;
         int iconTop = rowTop + 2 * RECT_BORDER;
         return new Rect(iconLeft, iconTop, iconLeft + bonusIconWidth, iconTop + bonusIconWidth);
     }
 
-    private Rect createBuyRectForSlot(int row, int col, int gridTop) {
-        int slotLeft = col * bonusSlotWidth;
+    private Rect createBuyRectForSlot(int row, int col, int gridTop, int slotWidth) {
+        int slotLeft = col * slotWidth;
         int rowTop = gridTop + row * bonusSlotHeight;
         int buyTop = rowTop + bonusSlotHeight - buyButtonHeight - 2 * RECT_BORDER;
-        return new Rect(slotLeft + RECT_BORDER, buyTop, slotLeft + bonusSlotWidth - RECT_BORDER, buyTop + buyButtonHeight);
+        return new Rect(slotLeft + RECT_BORDER, buyTop, slotLeft + slotWidth - RECT_BORDER, buyTop + buyButtonHeight);
     }
 
-    private Rect createBonusSlotRect(int row, int col, int gridTop) {
-        int slotLeft = col * bonusSlotWidth;
+    private Rect createBonusSlotRect(int row, int col, int gridTop, int slotWidth) {
+        int slotLeft = col * slotWidth;
         int rowTop = gridTop + row * bonusSlotHeight;
-        return new Rect(slotLeft, rowTop + RECT_BORDER, slotLeft + bonusSlotWidth, rowTop + bonusSlotHeight + RECT_BORDER);
+        return new Rect(slotLeft, rowTop + RECT_BORDER, slotLeft + slotWidth, rowTop + bonusSlotHeight + RECT_BORDER);
     }
 
     private void drawCell(Canvas canvas, Rect rect, Paint paint, String text) {
@@ -1264,6 +1302,14 @@ public class GameBoard {
             animateLineDissolveBonus();
             return;
         }
+        if (colorClearAnimationRunning) {
+            animateColorClearBonus();
+            return;
+        }
+        if (gravityAnimationRunning) {
+            animateGravityBonus();
+            return;
+        }
         if (levelPruneAnimationRunning) {
             animateLevelPruneAnimation();
             return;
@@ -1273,7 +1319,7 @@ public class GameBoard {
             return;
         }
 
-        if (shiftSelectionActive) {
+        if (lineSelectionActive) {
             shiftSelectionPulseTick = (shiftSelectionPulseTick + 1) % SHIFT_SELECTION_PULSE_CYCLE;
         }
 
@@ -1637,16 +1683,218 @@ public class GameBoard {
         lineDissolvePaints = null;
         lineDissolveTexts = null;
 
-        if (lineDissolveIsRow) {
-            delRowCounter--;
-            delRowSelected = false;
-        } else {
-            delColCounter--;
-            delColSelected = false;
-        }
+        delLineCounter--;
+        delLineSelected = false;
+        clearLineSelection();
 
         continueAfterBonusBoardMutation();
         updateBonusValues();
+    }
+
+    private void startColorClearAnimation(int targetValue) {
+        java.util.ArrayList<Rect> rects = new java.util.ArrayList<>();
+        java.util.ArrayList<Paint> paints = new java.util.ArrayList<>();
+        java.util.ArrayList<String> texts = new java.util.ArrayList<>();
+
+        for (int y = 0; y < height; y++) {
+            for (int x = 0; x < width; x++) {
+                if (gameBoardArray.get(x, y) == targetValue) {
+                    rects.add(new Rect(rectArray[x][y]));
+                    Paint p = new Paint();
+                    p.setColor(paintArray[x][y].getColor());
+                    paints.add(p);
+                    texts.add(getText(x, y));
+                    gameBoardArray.set(x, y, -1);
+                    paintArray[x][y].setColor(getColor(x, y));
+                }
+            }
+        }
+
+        colorClearRects = rects.toArray(new Rect[0]);
+        colorClearPaints = paints.toArray(new Paint[0]);
+        colorClearTexts = texts.toArray(new String[0]);
+        colorClearAnimationRunning = true;
+        colorClearAnimationCounter = LINE_DISSOLVE_ANIMATION_DURATION;
+    }
+
+    private void animateColorClearBonus() {
+        colorClearAnimationCounter--;
+        if (colorClearAnimationCounter <= 0) {
+            finishColorClearAnimation();
+        }
+    }
+
+    private void finishColorClearAnimation() {
+        colorClearAnimationRunning = false;
+        colorClearRects = null;
+        colorClearPaints = null;
+        colorClearTexts = null;
+        colorClearCounter--;
+        colorClearSelected = false;
+        continueAfterBonusBoardMutation();
+        updateBonusValues();
+    }
+
+    private void drawColorClearAnimation(Canvas canvas) {
+        if (!colorClearAnimationRunning || colorClearRects == null) {
+            return;
+        }
+        float baseProgress = 1.0f - (float) colorClearAnimationCounter / (float) LINE_DISSOLVE_ANIMATION_DURATION;
+        int length = colorClearRects.length;
+        for (int i = 0; i < length; i++) {
+            Rect sourceRect = colorClearRects[i];
+            Paint sourcePaint = colorClearPaints[i];
+            if (sourceRect == null || sourcePaint == null) {
+                continue;
+            }
+            float stagger = (length <= 1) ? 0.0f : ((float) i / (float) (length - 1)) * 0.22f;
+            float progress = Math.min(1.0f, Math.max(0.0f, (baseProgress - stagger) / (1.0f - stagger + 0.0001f)));
+            int alpha = Math.max(18, 255 - (int) (progress * 235.0f));
+            float inset = progress * Math.min(sourceRect.width(), sourceRect.height()) * 0.34f;
+
+            float left = sourceRect.left + inset;
+            float top = sourceRect.top + inset;
+            float right = sourceRect.right - inset;
+            float bottom = sourceRect.bottom - inset;
+
+            shiftEdgeDissolvePaint.setColor(sourcePaint.getColor());
+            shiftEdgeDissolvePaint.setAlpha(alpha);
+            canvas.drawRoundRect(left, top, right, bottom, 10.0f, 10.0f, shiftEdgeDissolvePaint);
+
+            shiftEdgeDissolveStrokePaint.setColor(TEXT_COLOR_WHITE);
+            shiftEdgeDissolveStrokePaint.setStrokeWidth(Math.max(1.8f, (1.0f - progress) * 6.0f));
+            shiftEdgeDissolveStrokePaint.setAlpha(Math.max(10, alpha - 70));
+            canvas.drawLine(left, top, right, bottom, shiftEdgeDissolveStrokePaint);
+            canvas.drawLine(left, bottom, right, top, shiftEdgeDissolveStrokePaint);
+
+            String text = colorClearTexts[i];
+            if (text != null && !text.isEmpty()) {
+                colorClearDrawRect.set((int) left, (int) top, (int) right, (int) bottom);
+                shiftEdgeDissolveTextPaint.setTextSize(getTextSize(text));
+                shiftEdgeDissolveTextPaint.setAlpha(Math.max(16, alpha - 90));
+                canvas.drawText(text,
+                        getTextPosX(colorClearDrawRect, text, shiftEdgeDissolveTextPaint),
+                        getTextPosY(colorClearDrawRect, shiftEdgeDissolveTextPaint),
+                        shiftEdgeDissolveTextPaint);
+            }
+        }
+    }
+
+    private boolean startGravityAnimation(boolean isHorizontal, boolean positiveDir) {
+        java.util.ArrayList<int[]> moves = new java.util.ArrayList<>();
+
+        if (!isHorizontal) {
+            for (int x = 0; x < width; x++) {
+                java.util.ArrayList<int[]> col = new java.util.ArrayList<>();
+                for (int y = 0; y < height; y++) {
+                    int v = gameBoardArray.get(x, y);
+                    if (v != -1) col.add(new int[]{y, v});
+                }
+                int k = col.size();
+                for (int i = 0; i < k; i++) {
+                    int srcY = col.get(i)[0];
+                    int dstY = positiveDir ? (height - k + i) : i;
+                    if (srcY != dstY) {
+                        moves.add(new int[]{x, srcY, x, dstY, col.get(i)[1]});
+                    }
+                }
+            }
+        } else {
+            for (int y = 0; y < height; y++) {
+                java.util.ArrayList<int[]> row = new java.util.ArrayList<>();
+                for (int x = 0; x < width; x++) {
+                    int v = gameBoardArray.get(x, y);
+                    if (v != -1) row.add(new int[]{x, v});
+                }
+                int k = row.size();
+                for (int i = 0; i < k; i++) {
+                    int srcX = row.get(i)[0];
+                    int dstX = positiveDir ? (width - k + i) : i;
+                    if (srcX != dstX) {
+                        moves.add(new int[]{srcX, y, dstX, y, row.get(i)[1]});
+                    }
+                }
+            }
+        }
+
+        if (moves.isEmpty()) {
+            return false;
+        }
+
+        int n = moves.size();
+        gravityAnimStartRects = new Rect[n];
+        gravityAnimEndRects   = new Rect[n];
+        gravityAnimPaints     = new Paint[n];
+        gravityAnimTexts      = new String[n];
+        gravityAnimValues     = new int[n];
+        gravityAnimDestX      = new int[n];
+        gravityAnimDestY      = new int[n];
+
+        for (int i = 0; i < n; i++) {
+            int srcX = moves.get(i)[0], srcY = moves.get(i)[1];
+            int dstX = moves.get(i)[2], dstY = moves.get(i)[3];
+            int val  = moves.get(i)[4];
+            gravityAnimStartRects[i] = new Rect(rectArray[srcX][srcY]);
+            gravityAnimEndRects[i]   = new Rect(rectArray[dstX][dstY]);
+            Paint p = new Paint();
+            p.setColor(paintArray[srcX][srcY].getColor());
+            gravityAnimPaints[i] = p;
+            gravityAnimTexts[i]  = getText(srcX, srcY);
+            gravityAnimValues[i] = val;
+            gravityAnimDestX[i]  = dstX;
+            gravityAnimDestY[i]  = dstY;
+            gameBoardArray.set(srcX, srcY, -1);
+            paintArray[srcX][srcY].setColor(getColor(srcX, srcY));
+        }
+
+        gravityAnimationRunning  = true;
+        gravityAnimationCounter  = GRAVITY_ANIMATION_STEPS;
+        gravityCounter--;
+        gravitySelected = false;
+        return true;
+    }
+
+    private void animateGravityBonus() {
+        gravityAnimationCounter--;
+        if (gravityAnimationCounter <= 0) {
+            finishGravityAnimation();
+        }
+    }
+
+    private void finishGravityAnimation() {
+        for (int i = 0; i < gravityAnimValues.length; i++) {
+            gameBoardArray.set(gravityAnimDestX[i], gravityAnimDestY[i], gravityAnimValues[i]);
+            paintArray[gravityAnimDestX[i]][gravityAnimDestY[i]].setColor(
+                    getColor(gravityAnimDestX[i], gravityAnimDestY[i]));
+        }
+        gravityAnimationRunning = false;
+        gravityAnimStartRects = null;
+        gravityAnimEndRects   = null;
+        gravityAnimPaints     = null;
+        gravityAnimTexts      = null;
+        gravityAnimValues     = null;
+        gravityAnimDestX      = null;
+        gravityAnimDestY      = null;
+        continueAfterBonusBoardMutation();
+        updateBonusValues();
+    }
+
+    private void drawGravityAnimation(Canvas canvas) {
+        if (!gravityAnimationRunning || gravityAnimStartRects == null) {
+            return;
+        }
+        float t = 1.0f - (float) gravityAnimationCounter / (float) GRAVITY_ANIMATION_STEPS;
+        // ease-in: blocks accelerate like falling
+        t = t * t;
+        for (int i = 0; i < gravityAnimStartRects.length; i++) {
+            Rect src = gravityAnimStartRects[i];
+            Rect dst = gravityAnimEndRects[i];
+            gravityAnimDrawRect.left   = (int) (src.left   + t * (dst.left   - src.left));
+            gravityAnimDrawRect.top    = (int) (src.top    + t * (dst.top    - src.top));
+            gravityAnimDrawRect.right  = (int) (src.right  + t * (dst.right  - src.right));
+            gravityAnimDrawRect.bottom = (int) (src.bottom + t * (dst.bottom - src.bottom));
+            drawCell(canvas, gravityAnimDrawRect, gravityAnimPaints[i], gravityAnimTexts[i]);
+        }
     }
 
     private void startShiftBonusAnimation(boolean isRow, int lineIndex, int directionSign) {
@@ -1659,7 +1907,7 @@ public class GameBoard {
         shiftBonusStepX = isRow ? shiftBonusDirectionSign * cellWidth / SHIFT_BONUS_ANIMATION_STEPS : 0.0f;
         shiftBonusStepY = isRow ? 0.0f : shiftBonusDirectionSign * cellHeight / SHIFT_BONUS_ANIMATION_STEPS;
 
-        clearShiftSelection();
+        clearLineSelection();
 
         int length = isRow ? width : height;
         shiftBonusValues = new int[length];
@@ -1721,13 +1969,8 @@ public class GameBoard {
             }
         }
 
-        if (shiftBonusAnimationIsRow) {
-            shiftRowCounter--;
-            shiftRowSelected = false;
-        } else {
-            shiftColCounter--;
-            shiftColSelected = false;
-        }
+        shiftLineCounter--;
+        shiftLineSelected = false;
 
         shiftBonusValues = null;
         shiftBonusRects = null;
@@ -1944,6 +2187,11 @@ public class GameBoard {
 
     private void finishBonusAnimation() {
         updateBonusValues();
+        if (bonusWin2 >= 0) {
+            bonusWin = bonusWin2;
+            bonusWin2 = -1;
+            startBonusAnimation();
+        }
     }
 
     private void startLevelAnimation() {
@@ -2020,10 +2268,10 @@ public class GameBoard {
         swapText   = Integer.toString(swapCounter);
         jumpText   = Integer.toString(jumpCounter);
         dissolveText = Integer.toString(dissolveCounter);
-        delRowText = Integer.toString(delRowCounter);
-        delColText = Integer.toString(delColCounter);
-        shiftRowText = Integer.toString(shiftRowCounter);
-        shiftColText = Integer.toString(shiftColCounter);
+        delLineText  = Integer.toString(delLineCounter);
+        shiftLineText = Integer.toString(shiftLineCounter);
+        colorClearText = Integer.toString(colorClearCounter);
+        gravityText  = Integer.toString(gravityCounter);
     }
 
     private long calculateComboScore(int comboSize) {
@@ -2064,19 +2312,38 @@ public class GameBoard {
 
     private int getWeightedRandomBonusIndex() {
         double totalWeight = 0.0d;
-        for (long bonusCost : BONUS_BUY_COSTS) {
-            totalWeight += 1.0d / (double) bonusCost;
+        for (int i = 0; i < BONUS_BUY_COSTS.length; i++) {
+            totalWeight += getBonusWeight(i);
         }
 
         double roll = rand.nextDouble() * totalWeight;
         double cumulativeWeight = 0.0d;
         for (int i = 0; i < BONUS_BUY_COSTS.length; i++) {
-            cumulativeWeight += 1.0d / (double) BONUS_BUY_COSTS[i];
+            cumulativeWeight += getBonusWeight(i);
             if (roll <= cumulativeWeight) {
                 return i;
             }
         }
         return BONUS_BUY_COSTS.length - 1;
+    }
+
+    private double getBonusWeight(int index) {
+        int count = getBonusCount(index);
+        return 1.0d / ((double) BONUS_BUY_COSTS[index] * (1.0d + BONUS_COUNT_DAMPING * count));
+    }
+
+    private int getBonusCount(int index) {
+        switch (index) {
+            case 0: return undoCounter;
+            case 1: return swapCounter;
+            case 2: return jumpCounter;
+            case 3: return dissolveCounter;
+            case 4: return delLineCounter;
+            case 5: return shiftLineCounter;
+            case 6: return colorClearCounter;
+            case 7: return gravityCounter;
+            default: return 0;
+        }
     }
 
     private void addBonusCount(int bonusIndex, int amount) {
@@ -2094,16 +2361,16 @@ public class GameBoard {
                 dissolveCounter += amount;
                 break;
             case 4:
-                delRowCounter += amount;
+                delLineCounter += amount;
                 break;
             case 5:
-                delColCounter += amount;
+                shiftLineCounter += amount;
                 break;
             case 6:
-                shiftRowCounter += amount;
+                colorClearCounter += amount;
                 break;
             case 7:
-                shiftColCounter += amount;
+                gravityCounter += amount;
                 break;
             default:
                 break;
@@ -2113,6 +2380,10 @@ public class GameBoard {
     private void awardRandomBonus() {
         bonusWin = getWeightedRandomBonusIndex();
         addBonusCount(bonusWin, BONUS_AWARD_AMOUNT);
+        // Draw second bonus after updating the count so the damping
+        // naturally reduces the chance of receiving the same one again.
+        bonusWin2 = getWeightedRandomBonusIndex();
+        addBonusCount(bonusWin2, BONUS_AWARD_AMOUNT);
         startBonusAnimation();
     }
 
@@ -2234,7 +2505,9 @@ public class GameBoard {
             return;
         }
 
-        if (dissolveAnimationRunning || lineDissolveAnimationRunning || levelPruneAnimationRunning || status == statusT.BONUS_SHIFT_ANIMATION) {
+        if (dissolveAnimationRunning || lineDissolveAnimationRunning || colorClearAnimationRunning
+                || gravityAnimationRunning || levelPruneAnimationRunning
+                || status == statusT.BONUS_SHIFT_ANIMATION) {
             return;
         }
 
@@ -2329,7 +2602,7 @@ public class GameBoard {
     }
 
     private boolean tryHandleShiftSwipeGesture(int x, int y) {
-        if (!shiftSelectionActive || status != statusT.SELECT_START_POSITION) {
+        if (!lineSelectionActive || status != statusT.SELECT_START_POSITION) {
             return false;
         }
 
@@ -2338,21 +2611,46 @@ public class GameBoard {
         float minSwipeX = Math.max(28.0f, cellWidth * SHIFT_SELECTION_SWIPE_THRESHOLD_CELLS);
         float minSwipeY = Math.max(28.0f, cellHeight * SHIFT_SELECTION_SWIPE_THRESHOLD_CELLS);
 
-        if (shiftSelectionIsRow) {
-            if (Math.abs(deltaX) < minSwipeX || Math.abs(deltaX) <= Math.abs(deltaY)) {
-                return false;
+        boolean horizDominant = Math.abs(deltaX) >= Math.abs(deltaY) && Math.abs(deltaX) >= minSwipeX;
+        boolean vertDominant  = Math.abs(deltaY) >  Math.abs(deltaX) && Math.abs(deltaY) >= minSwipeY;
+
+        if (!horizDominant && !vertDominant) {
+            return false;
+        }
+
+        if (delLineSelected) {
+            if (horizDominant) {
+                startLineDissolveAnimation(true, lineSelectionRow);
+            } else {
+                startLineDissolveAnimation(false, lineSelectionCol);
             }
-            int directionSign = deltaX > 0 ? 1 : -1;
-            startShiftBonusAnimation(true, shiftSelectionLineIndex, directionSign);
             return true;
         }
 
-        if (Math.abs(deltaY) < minSwipeY || Math.abs(deltaY) <= Math.abs(deltaX)) {
-            return false;
+        if (shiftLineSelected) {
+            if (horizDominant) {
+                int directionSign = deltaX > 0 ? 1 : -1;
+                startShiftBonusAnimation(true, lineSelectionRow, directionSign);
+            } else {
+                int directionSign = deltaY > 0 ? 1 : -1;
+                startShiftBonusAnimation(false, lineSelectionCol, directionSign);
+            }
+            return true;
         }
-        int directionSign = deltaY > 0 ? 1 : -1;
-        startShiftBonusAnimation(false, shiftSelectionLineIndex, directionSign);
-        return true;
+
+        if (gravitySelected) {
+            if (!horizDominant && !vertDominant) {
+                return false;
+            }
+            boolean isHorizontal = horizDominant;
+            boolean positiveDir  = horizDominant ? (deltaX > 0) : (deltaY > 0);
+            if (!startGravityAnimation(isHorizontal, positiveDir)) {
+                alertAnimationCounter = ALERT_TIME;
+            }
+            return true;
+        }
+
+        return false;
     }
 
     private boolean handleBoardBonusTap(int indexX, int indexY, int cellValue) {
@@ -2365,39 +2663,43 @@ public class GameBoard {
             return true;
         }
 
-        if (delRowSelected) {
-            startLineDissolveAnimation(true, indexY);
+        if (delLineSelected) {
+            selectLineForBonus(indexX, indexY);
             return true;
         }
 
-        if (delColSelected) {
-            startLineDissolveAnimation(false, indexX);
+        if (shiftLineSelected) {
+            selectLineForBonus(indexX, indexY);
             return true;
         }
 
-        if (shiftRowSelected) {
-            selectShiftLine(true, indexY);
+        if (colorClearSelected) {
+            if (cellValue != -1) {
+                startColorClearAnimation(cellValue);
+            } else {
+                alertAnimationCounter = ALERT_TIME;
+            }
             return true;
         }
 
-        if (shiftColSelected) {
-            selectShiftLine(false, indexX);
-            return true;
+        if (gravitySelected) {
+            return true; // consume tap, direction chosen by swipe
         }
 
         return false;
     }
 
-    private void selectShiftLine(boolean isRow, int lineIndex) {
-        shiftSelectionActive = true;
-        shiftSelectionIsRow = isRow;
-        shiftSelectionLineIndex = lineIndex;
+    private void selectLineForBonus(int indexX, int indexY) {
+        lineSelectionActive = true;
+        lineSelectionRow = indexY;
+        lineSelectionCol = indexX;
         shiftSelectionPulseTick = 0;
     }
 
-    private void clearShiftSelection() {
-        shiftSelectionActive = false;
-        shiftSelectionLineIndex = -1;
+    private void clearLineSelection() {
+        lineSelectionActive = false;
+        lineSelectionRow = -1;
+        lineSelectionCol = -1;
         shiftSelectionPulseTick = 0;
     }
 
@@ -2465,27 +2767,27 @@ public class GameBoard {
             }
             return true;
         }
-        if (delRowBuyRect.contains(x, y)) {
-            if (tryBuyBonus(delRowBuyRect, x, y, BUY_COST_DEL_ROW)) {
-                delRowCounter++;
+        if (delLineBuyRect.contains(x, y)) {
+            if (tryBuyBonus(delLineBuyRect, x, y, BUY_COST_DEL_LINE)) {
+                delLineCounter++;
             }
             return true;
         }
-        if (delColBuyRect.contains(x, y)) {
-            if (tryBuyBonus(delColBuyRect, x, y, BUY_COST_DEL_COL)) {
-                delColCounter++;
+        if (shiftLineBuyRect.contains(x, y)) {
+            if (tryBuyBonus(shiftLineBuyRect, x, y, BUY_COST_SHIFT_LINE)) {
+                shiftLineCounter++;
             }
             return true;
         }
-        if (shiftRowBuyRect.contains(x, y)) {
-            if (tryBuyBonus(shiftRowBuyRect, x, y, BUY_COST_SHIFT_ROW)) {
-                shiftRowCounter++;
+        if (colorClearBuyRect.contains(x, y)) {
+            if (tryBuyBonus(colorClearBuyRect, x, y, BUY_COST_COLOR_CLEAR)) {
+                colorClearCounter++;
             }
             return true;
         }
-        if (shiftColBuyRect.contains(x, y)) {
-            if (tryBuyBonus(shiftColBuyRect, x, y, BUY_COST_SHIFT_COL)) {
-                shiftColCounter++;
+        if (gravityBuyRect.contains(x, y)) {
+            if (tryBuyBonus(gravityBuyRect, x, y, BUY_COST_GRAVITY)) {
+                gravityCounter++;
             }
             return true;
         }
@@ -2515,32 +2817,32 @@ public class GameBoard {
             dissolveSelected = !prev;
             return true;
         }
-        if (delRowSlotRect.contains(x, y) && delRowCounter > 0) {
+        if (delLineSlotRect.contains(x, y) && delLineCounter > 0) {
             leaveTargetSelectionMode();
-            boolean prev = delRowSelected;
+            boolean prev = delLineSelected;
             deselectAllBonuses();
-            delRowSelected = !prev;
+            delLineSelected = !prev;
             return true;
         }
-        if (delColSlotRect.contains(x, y) && delColCounter > 0) {
+        if (shiftLineSlotRect.contains(x, y) && shiftLineCounter > 0) {
             leaveTargetSelectionMode();
-            boolean prev = delColSelected;
+            boolean prev = shiftLineSelected;
             deselectAllBonuses();
-            delColSelected = !prev;
+            shiftLineSelected = !prev;
             return true;
         }
-        if (shiftRowSlotRect.contains(x, y) && shiftRowCounter > 0) {
+        if (colorClearSlotRect.contains(x, y) && colorClearCounter > 0) {
             leaveTargetSelectionMode();
-            boolean prev = shiftRowSelected;
+            boolean prev = colorClearSelected;
             deselectAllBonuses();
-            shiftRowSelected = !prev;
+            colorClearSelected = !prev;
             return true;
         }
-        if (shiftColSlotRect.contains(x, y) && shiftColCounter > 0) {
+        if (gravitySlotRect.contains(x, y) && gravityCounter > 0) {
             leaveTargetSelectionMode();
-            boolean prev = shiftColSelected;
+            boolean prev = gravitySelected;
             deselectAllBonuses();
-            shiftColSelected = !prev;
+            gravitySelected = !prev;
             return true;
         }
 
@@ -2572,11 +2874,11 @@ public class GameBoard {
         swapSelected   = false;
         jumpSelected   = false;
         dissolveSelected = false;
-        delRowSelected = false;
-        delColSelected = false;
-        shiftRowSelected = false;
-        shiftColSelected = false;
-        clearShiftSelection();
+        delLineSelected = false;
+        shiftLineSelected = false;
+        colorClearSelected = false;
+        gravitySelected = false;
+        clearLineSelection();
     }
 
     private void invertMotionPath() {

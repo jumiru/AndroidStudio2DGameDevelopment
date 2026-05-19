@@ -1,0 +1,20 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="96dp"
+    android:height="96dp"
+    android:viewportWidth="96"
+    android:viewportHeight="96">
+    <!-- BEFORE: scattered blocks (semi-transparent = "will move") -->
+    <path android:fillColor="#AA6E88C8" android:pathData="M2,2h20v18h-20z"/>
+    <path android:fillColor="#AAFF9F6B" android:pathData="M26,8h20v18h-20z"/>
+    <path android:fillColor="#AA9BE27C" android:pathData="M52,2h20v16h-20z"/>
+    <path android:fillColor="#AABD8BFF" android:pathData="M76,8h18v16h-18z"/>
+    <!-- Large teal downward arrow -->
+    <path
+        android:fillColor="#FF40D4C8"
+        android:pathData="M40,24 L56,24 L56,56 L68,56 L48,74 L28,56 L40,56 Z"/>
+    <!-- AFTER: same blocks packed at the bottom (full opacity) -->
+    <path android:fillColor="#FF6E88C8" android:pathData="M2,78h22v16h-22z"/>
+    <path android:fillColor="#FFFF9F6B" android:pathData="M26,78h22v16h-22z"/>
+    <path android:fillColor="#FF9BE27C" android:pathData="M50,78h22v16h-22z"/>
+    <path android:fillColor="#FFBD8BFF" android:pathData="M74,78h20v16h-20z"/>
+</vector>

@@ -1,0 +1,26 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="96dp"
+    android:height="96dp"
+    android:viewportWidth="96"
+    android:viewportHeight="96">
+    <!-- Corner grid cells (show it's a grid) -->
+    <path android:fillColor="#44FFFFFF" android:pathData="M2,2h32v32h-32z"/>
+    <path android:fillColor="#44FFFFFF" android:pathData="M62,2h32v32h-32z"/>
+    <path android:fillColor="#44FFFFFF" android:pathData="M2,62h32v32h-32z"/>
+    <path android:fillColor="#44FFFFFF" android:pathData="M62,62h32v32h-32z"/>
+    <!-- Red horizontal bar – full width, thick -->
+    <path android:fillColor="#FFCC3A3A" android:pathData="M0,36h96v24h-96z"/>
+    <!-- Red vertical bar – full height, thick -->
+    <path android:fillColor="#FFCC3A3A" android:pathData="M36,0h24v96h-24z"/>
+    <!-- Bold white X in the intersection -->
+    <path
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="8"
+        android:fillColor="#00000000"
+        android:pathData="M39,39 L57,57"/>
+    <path
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="8"
+        android:fillColor="#00000000"
+        android:pathData="M57,39 L39,57"/>
+</vector>
