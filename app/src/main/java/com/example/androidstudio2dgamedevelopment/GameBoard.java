@@ -91,17 +91,17 @@ public class GameBoard {
 
     private static final int MIN_COMBO_SIZE = 4;
     private static final long BASE_COMBO_SCORE = 4L;
-    private static final long BASE_LEVEL_SCORE = 75L;
+    private static final long BASE_LEVEL_SCORE = 25L;
     private static final long BASE_BONUS_STEP = 75L;
     private static final long BONUS_STEP_PER_LEVEL = 40L;
-    private static final long BUY_COST_UNDO = 600L;
-    private static final long BUY_COST_SWAP = 1200L;
-    private static final long BUY_COST_JUMP = 1900L;
-    private static final long BUY_COST_DISSOLVE = 900L;
-    private static final long BUY_COST_DEL_LINE = 2400L;
-    private static final long BUY_COST_SHIFT_LINE = 1700L;
-    private static final long BUY_COST_COLOR_CLEAR = 3000L;
-    private static final long BUY_COST_GRAVITY = 1500L;
+    private static final long BUY_COST_UNDO = 200L;
+    private static final long BUY_COST_SWAP = 400L;
+    private static final long BUY_COST_JUMP = 630L;
+    private static final long BUY_COST_DISSOLVE = 300L;
+    private static final long BUY_COST_DEL_LINE = 800L;
+    private static final long BUY_COST_SHIFT_LINE = 565L;
+    private static final long BUY_COST_COLOR_CLEAR = 1000L;
+    private static final long BUY_COST_GRAVITY = 500L;
     private static final int GRAVITY_ANIMATION_STEPS = 14;
     private static final int BONUS_AWARD_AMOUNT = 1;
     private static final double BONUS_COUNT_DAMPING = 0.5d;
@@ -1396,12 +1396,6 @@ public class GameBoard {
             if (gameOverAnimationPhase == 0) {
                 startGameOverAnimation();
             }
-
-            if (highscoreExceeded && !highscoreLockedByCheat) {
-                SharedPreferences.Editor editor = prefs.edit();
-                editor.putLong(PREF_KEY_HIGHSCORE, highScore);
-                editor.apply();
-            }
         }
 
     }
@@ -2432,6 +2426,7 @@ public class GameBoard {
         if (!highscoreLockedByCheat && score > highScore) {
             highScore = score;
             highscoreExceeded = true;
+            prefs.edit().putLong(PREF_KEY_HIGHSCORE, highScore).apply();
         }
 
         while (score >= nextScoreForBonus) {
