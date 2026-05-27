@@ -307,12 +307,12 @@ public class GameBoard {
     private long secretCodeLastTapMs;
 
     // split-flap HUD animation (score=0, level=1, best=2)
-    private String hudDisplayedScore = "";
-    private String hudDisplayedLevel = "";
-    private String hudDisplayedBest  = "";
-    private final String[] hudFlipFromText = {"", "", ""};
-    private final String[] hudFlipToText   = {"", "", ""};
-    private final int[]    hudFlipCounter  = {0, 0, 0};
+    private static final int MAX_HUD_DIGITS = 8;
+    private final char[][] hudDigitCurrent = new char[3][MAX_HUD_DIGITS];
+    private final char[][] hudDigitNext    = new char[3][MAX_HUD_DIGITS];
+    private final char[][] hudDigitTarget  = new char[3][MAX_HUD_DIGITS];
+    private final int[][]  hudDigitCounter = new int[3][MAX_HUD_DIGITS];
+    private final int[]    hudDigitCount   = new int[3];
     private final Camera   hudFlipCamera   = new Camera();
     private final Matrix   hudFlipMatrix   = new Matrix();
     private Paint hudDividerPaint;
@@ -1056,11 +1056,11 @@ public class GameBoard {
         float baselineForValue = contentCenterY - (valueHeight / 2.0f) - valueMetrics.ascent;
 
         canvas.drawText(label, innerLeft, baselineForLabel, statusLabelPaint);
-        if (hudFlipCounter[hudSlot] > 0) {
+        if (anyDigitAnimating(hudSlot)) {
             drawHudFlipValue(canvas, innerLeft, innerRight, contentTop, contentBottom,
                     hudSlot, scoreAndLevelPaint, baselineForValue);
         } else {
-            drawStaticHudCards(canvas, value, innerLeft, innerRight,
+            drawStaticHudCards(canvas, getHudSlotDisplayString(hudSlot), innerLeft, innerRight,
                     contentTop, contentBottom, scoreAndLevelPaint, baselineForValue);
         }
 
@@ -1069,37 +1069,93 @@ public class GameBoard {
     }
 
     private void resetHudDisplayedValues() {
-        hudDisplayedScore = getScoreText(score);
-        hudDisplayedLevel = Integer.toString(level);
-        hudDisplayedBest  = getScoreText(highScore);
-        hudFlipCounter[0] = 0;
-        hudFlipCounter[1] = 0;
-        hudFlipCounter[2] = 0;
+        initHudSlot(HUD_SLOT_SCORE, getScoreText(score));
+        initHudSlot(HUD_SLOT_LEVEL, Integer.toString(level));
+        initHudSlot(HUD_SLOT_BEST,  getScoreText(highScore));
+    }
+
+    private void initHudSlot(int slot, String text) {
+        int n = Math.min(text.length(), MAX_HUD_DIGITS);
+        hudDigitCount[slot] = n;
+        for (int d = 0; d < n; d++) {
+            char ch = text.charAt(d);
+            hudDigitCurrent[slot][d] = ch;
+            hudDigitNext[slot][d]    = ch;
+            hudDigitTarget[slot][d]  = ch;
+            hudDigitCounter[slot][d] = 0;
+        }
     }
 
     private void updateHudFlips() {
-        for (int i = 0; i < 3; i++) {
-            if (hudFlipCounter[i] > 0) hudFlipCounter[i]--;
+        updateSlotTargets(HUD_SLOT_SCORE, getScoreText(score));
+        updateSlotTargets(HUD_SLOT_LEVEL, Integer.toString(level));
+        updateSlotTargets(HUD_SLOT_BEST,  getScoreText(highScore));
+
+        for (int slot = 0; slot < 3; slot++) {
+            for (int d = 0; d < hudDigitCount[slot]; d++) {
+                if (hudDigitCounter[slot][d] > 0) {
+                    hudDigitCounter[slot][d]--;
+                    if (hudDigitCounter[slot][d] == 0) {
+                        hudDigitCurrent[slot][d] = hudDigitNext[slot][d];
+                    }
+                }
+                if (hudDigitCounter[slot][d] == 0 && hudDigitCurrent[slot][d] != hudDigitTarget[slot][d]) {
+                    hudDigitNext[slot][d]    = nextFlipChar(hudDigitCurrent[slot][d], hudDigitTarget[slot][d]);
+                    hudDigitCounter[slot][d] = HUD_FLIP_DURATION;
+                }
+            }
         }
-        checkHudFlip(HUD_SLOT_SCORE, getScoreText(score));
-        checkHudFlip(HUD_SLOT_LEVEL, Integer.toString(level));
-        checkHudFlip(HUD_SLOT_BEST,  getScoreText(highScore));
     }
 
-    private void checkHudFlip(int slot, String newValue) {
-        String displayed = slot == HUD_SLOT_SCORE ? hudDisplayedScore :
-                           slot == HUD_SLOT_LEVEL ? hudDisplayedLevel : hudDisplayedBest;
-        if (newValue.equals(displayed)) return;
-        if (hudFlipCounter[slot] > 0) {
-            hudFlipToText[slot] = newValue;
-        } else {
-            hudFlipFromText[slot] = displayed.isEmpty() ? newValue : displayed;
-            hudFlipToText[slot]   = newValue;
-            hudFlipCounter[slot]  = HUD_FLIP_DURATION;
+    private void updateSlotTargets(int slot, String newText) {
+        int newLen = Math.min(newText.length(), MAX_HUD_DIGITS);
+        int nCells = Math.max(hudDigitCount[slot], newLen);
+
+        if (nCells > hudDigitCount[slot]) {
+            int shift = nCells - hudDigitCount[slot];
+            for (int d = nCells - 1; d >= 0; d--) {
+                int src = d - shift;
+                if (src >= 0) {
+                    hudDigitCurrent[slot][d] = hudDigitCurrent[slot][src];
+                    hudDigitNext[slot][d]    = hudDigitNext[slot][src];
+                    hudDigitTarget[slot][d]  = hudDigitTarget[slot][src];
+                    hudDigitCounter[slot][d] = hudDigitCounter[slot][src];
+                } else {
+                    hudDigitCurrent[slot][d] = ' ';
+                    hudDigitNext[slot][d]    = ' ';
+                    hudDigitTarget[slot][d]  = ' ';
+                    hudDigitCounter[slot][d] = 0;
+                }
+            }
+            hudDigitCount[slot] = nCells;
         }
-        if (slot == HUD_SLOT_SCORE)      hudDisplayedScore = newValue;
-        else if (slot == HUD_SLOT_LEVEL) hudDisplayedLevel = newValue;
-        else                             hudDisplayedBest  = newValue;
+
+        for (int d = 0; d < nCells; d++) {
+            int charIdx = d - (nCells - newLen);
+            char targetCh = (charIdx >= 0 && charIdx < newLen) ? newText.charAt(charIdx) : ' ';
+            hudDigitTarget[slot][d] = targetCh;
+        }
+    }
+
+    private char nextFlipChar(char current, char target) {
+        if (current >= '0' && current <= '9' && target >= '0' && target <= '9') {
+            return (char) ((current - '0' + 1) % 10 + '0');
+        }
+        return target;
+    }
+
+    private boolean anyDigitAnimating(int slot) {
+        for (int d = 0; d < hudDigitCount[slot]; d++) {
+            if (hudDigitCounter[slot][d] > 0) return true;
+        }
+        return false;
+    }
+
+    private String getHudSlotDisplayString(int slot) {
+        int n = hudDigitCount[slot];
+        char[] chars = new char[n];
+        for (int d = 0; d < n; d++) chars[d] = hudDigitCurrent[slot][d];
+        return new String(chars);
     }
 
     // Returns [cardWidth, cardGap, startX] for a right-aligned card layout.
@@ -1163,17 +1219,14 @@ public class GameBoard {
         canvas.drawText(s, tx, baseline, paint);
     }
 
-    // Per-card split-flap animation.
-    // Phase 1 (t=0..0.5): old top half of each card folds away, new top appears underneath.
+    // Per-card split-flap animation. Each digit flips independently by one increment per flip.
+    // Phase 1 (t=0..0.5): old top half folds away, new top appears underneath.
     // Phase 2 (t=0.5..1): new bottom half folds in, covering old bottom.
     private void drawHudFlipValue(Canvas canvas, float innerLeft, float innerRight,
                                    float contentTop, float contentBottom,
                                    int slot, Paint valuePaint, float baseline) {
-        float t  = 1.0f - (float) hudFlipCounter[slot] / (float) HUD_FLIP_DURATION;
         float cy = (contentTop + contentBottom) / 2.0f;
-        String fromText = hudFlipFromText[slot];
-        String toText   = hudFlipToText[slot];
-        int nCells = Math.max(fromText.length(), toText.length());
+        int nCells = hudDigitCount[slot];
 
         float[] layout = computeCardLayout(nCells, innerLeft, innerRight, contentTop, contentBottom);
         float cardWidth = layout[0];
@@ -1184,28 +1237,32 @@ public class GameBoard {
             float cLeft  = startX + i * (cardWidth + cardGap);
             float cRight = cLeft + cardWidth;
             float cCx    = (cLeft + cRight) / 2.0f;
-            char fromCh  = getCharForCell(fromText, i, nCells);
-            char toCh    = getCharForCell(toText,   i, nCells);
+            char fromCh  = hudDigitCurrent[slot][i];
+            char toCh    = hudDigitNext[slot][i];
+            int counter  = hudDigitCounter[slot][i];
 
-            // Card background + divider (outside any clip — full card height)
             drawCardBackground(canvas, cLeft, cRight, contentTop, contentBottom, cy);
+
+            if (counter <= 0) {
+                drawCharCentered(canvas, fromCh, cLeft, cardWidth, baseline, valuePaint);
+                continue;
+            }
+
+            float t = 1.0f - (float) counter / (float) HUD_FLIP_DURATION;
 
             if (t < 0.5f) {
                 float angle = t * 2.0f * 90.0f;
 
-                // Static: new top half (visible behind the falling flap)
                 canvas.save();
                 canvas.clipRect(cLeft, contentTop, cRight, cy);
                 drawCharCentered(canvas, toCh, cLeft, cardWidth, baseline, valuePaint);
                 canvas.restore();
 
-                // Static: old bottom half
                 canvas.save();
                 canvas.clipRect(cLeft, cy, cRight, contentBottom);
                 drawCharCentered(canvas, fromCh, cLeft, cardWidth, baseline, valuePaint);
                 canvas.restore();
 
-                // Animated: old top half folding away (flat → edge-on)
                 canvas.save();
                 canvas.clipRect(cLeft, contentTop, cRight, cy);
                 hudFlipMatrix.reset();
@@ -1222,19 +1279,16 @@ public class GameBoard {
             } else {
                 float angle = (1.0f - t) * 2.0f * 90.0f;
 
-                // Static: new top half
                 canvas.save();
                 canvas.clipRect(cLeft, contentTop, cRight, cy);
                 drawCharCentered(canvas, toCh, cLeft, cardWidth, baseline, valuePaint);
                 canvas.restore();
 
-                // Static: old bottom half (visible until new bottom folds in)
                 canvas.save();
                 canvas.clipRect(cLeft, cy, cRight, contentBottom);
                 drawCharCentered(canvas, fromCh, cLeft, cardWidth, baseline, valuePaint);
                 canvas.restore();
 
-                // Animated: new bottom half folding in (edge-on → flat)
                 canvas.save();
                 canvas.clipRect(cLeft, cy, cRight, contentBottom);
                 hudFlipMatrix.reset();
