@@ -2447,7 +2447,8 @@ public class GameBoard {
         mergeIncrementsX = new float[numMergeRects];
         mergeIncrementsY = new float[numMergeRects];
         mergeText = getText(targetPositionX, targetPositionY);
-        mergePaint = new Paint(paintArray[targetPositionX][targetPositionY]);
+        if (mergePaint == null) mergePaint = new Paint();
+        mergePaint.setColor(getColor(targetPositionX, targetPositionY));
         int i = 0;
         while (it.hasNext()) {
             Coord c = it.next();
@@ -2468,6 +2469,9 @@ public class GameBoard {
          }
 
          long comboScore = calculateComboScore(mergeGroup.size());
+         if (gameBoardArrayValueAfterMotion > getCurrentMaxSpawnIndex()) {
+             comboScore = safeMultiply(comboScore, 4L);
+         }
          if (chainLength == 0) {
              chainScoreProduct = comboScore;
          } else {
