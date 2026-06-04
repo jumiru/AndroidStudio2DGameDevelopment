@@ -76,11 +76,22 @@ public class GameBoard {
             SECRET_CODE_BEST,
             SECRET_CODE_BEST
     };
+    // Hidden code 4: SCORE x4 -> toggle self-play / watch mode
+    private static final int[] SECRET_CODE_SEQUENCE_SELF_PLAY = {
+            SECRET_CODE_SCORE,
+            SECRET_CODE_SCORE,
+            SECRET_CODE_SCORE,
+            SECRET_CODE_SCORE
+    };
     private static final int[][] SECRET_CODE_SEQUENCES = {
             SECRET_CODE_SEQUENCE_BONUS,
             SECRET_CODE_SEQUENCE_SCORE_BOOST,
-            SECRET_CODE_SEQUENCE_RESET_HIGHSCORE
+            SECRET_CODE_SEQUENCE_RESET_HIGHSCORE,
+            SECRET_CODE_SEQUENCE_SELF_PLAY
     };
+    private static final int SELF_PLAY_MOVE_DELAY   = 50;   // frames between moves
+    private static final int SELF_PLAY_TAP_GAP      = 14;   // frames between start and target tap
+    private static final int SELF_PLAY_TAP_ANIM_DUR = 22;   // frames for tap-ripple animation
     private static final int HUD_CORNER_RADIUS = 26;
     private static final int HUD_PANEL_COLOR = 0xff16213a;
     private static final int HUD_PANEL_BORDER_COLOR = 0xff32518b;
@@ -94,6 +105,7 @@ public class GameBoard {
     private static final int BONUS_SLOT_BORDER_COLOR = 0xff2e466f;
     private static final String GAME_OVER_TEXT = "game over!";
     private static final String PREF_KEY_HIGHSCORE = "highscore";
+    private static final String PREF_KEY_AUTO_HIGHSCORE = "auto_highscore";
     private static final String PREF_KEY_HIGHSCORE_RESET_VERSION = "highscore_reset_version";
     // Bump this value to trigger a one-time highscore reset on next launch
     private static final int HIGHSCORE_RESET_VERSION = 2;
@@ -110,8 +122,8 @@ public class GameBoard {
     private static final long BUY_COST_DEL_LINE = 800L;
     private static final long BUY_COST_SHIFT_LINE = 565L;
     private static final long BUY_COST_COLOR_CLEAR = 1000L;
-    private static final long BUY_COST_GRAVITY = 500L;
-    private static final int GRAVITY_ANIMATION_STEPS = 14;
+    private static final long BUY_COST_BOMB = 1500L;
+    private static final int BOMB_ANIMATION_STEPS = 35;
     private static final int BONUS_AWARD_AMOUNT = 1;
     private static final double BONUS_COUNT_DAMPING = 0.5d;
     private static final int   HUD_FLIP_DURATION    = 18;
@@ -128,7 +140,7 @@ public class GameBoard {
             BUY_COST_UNDO,
             BUY_COST_DISSOLVE,
             BUY_COST_SWAP,
-            BUY_COST_GRAVITY,
+            BUY_COST_BOMB,
             BUY_COST_SHIFT_LINE,
             BUY_COST_JUMP,
             BUY_COST_DEL_LINE,
@@ -138,7 +150,7 @@ public class GameBoard {
             R.drawable.undo_circle_icon,
             R.drawable.delete_block_icon,
             R.drawable.swap_icon,
-            R.drawable.gravity_icon,
+            R.drawable.bomb_icon,
             R.drawable.shift_line_icon,
             R.drawable.jump_icon,
             R.drawable.delete_line_icon,
@@ -148,11 +160,25 @@ public class GameBoard {
             0xff66d8ff, // undo
             0xffff9f6b, // dissolve
             0xff91a8ff, // swap
-            0xff40d4c8, // gravity
+            0xffff6b35, // bomb
             0xffbd8bff, // shift_line
             0xff9be27c, // jump
             0xffff7f7f, // del_line
             0xffffb0df  // color_clear
+    };
+    static final String[] BONUS_NAMES = {
+            "Rückgängig", "Auflösen", "Tauschen", "Bombe",
+            "Reihe verschieben", "Sprung", "Reihe löschen", "Farbe löschen"
+    };
+    static final String[] BONUS_DESCRIPTIONS = {
+            "Macht den letzten Zug rückgängig.",
+            "Entfernt einen einzelnen Block vom Spielfeld.",
+            "Tauscht zwei Blöcke an beliebigen Positionen.",
+            "Zerstört alle Blöcke in einem 3×3-Bereich um den angetippten Block.",
+            "Verschiebt eine Reihe oder Spalte um ein Feld. Nach dem Antippen in die gewünschte Richtung wischen.",
+            "Bewegt einen Block direkt an eine beliebige Zielposition.",
+            "Löscht eine vollständige Reihe oder Spalte. Nach dem Antippen in die gewünschte Richtung wischen.",
+            "Entfernt alle Blöcke mit derselben Zahl vom Spielfeld."
     };
 
     public enum directionT {
@@ -193,6 +219,8 @@ public class GameBoard {
     private boolean highscoreLockedByCheat;
 
     private boolean highscoreExceeded;
+    private long autoHighScore;
+    private boolean autoHighscoreExceeded;
     private long nextScoreForBonus;
     private long chainScoreProduct;
     private int chainLength;
@@ -274,7 +302,6 @@ public class GameBoard {
     private int lineSelectionRow;
     private int lineSelectionCol;
     private int shiftSelectionPulseTick;
-    private int gravitySelectionPulseTick;
     // color clear bonus animation
     private boolean colorClearAnimationRunning;
     private int colorClearAnimationCounter;
@@ -282,19 +309,17 @@ public class GameBoard {
     private Paint[] colorClearPaints;
     private String[] colorClearTexts;
     private Rect colorClearDrawRect;
-    // gravity bonus animation
-    private boolean gravityAnimationRunning;
-    private int gravityAnimationCounter;
-    private Rect[] gravityAnimStartRects;
-    private Rect[] gravityAnimEndRects;
-    private Paint[] gravityAnimPaints;
-    private String[] gravityAnimTexts;
-    private int[] gravityAnimValues;
-    private int[] gravityAnimDestX;
-    private int[] gravityAnimDestY;
-    private Rect gravityAnimDrawRect;
+    // bomb bonus animation
+    private boolean bombAnimationRunning;
+    private int bombAnimationCounter;
+    private Rect[] bombBlastRects;
+    private Paint[] bombBlastPaints;
+    private String[] bombBlastTexts;
+    private int bombCenterPixelX;
+    private int bombCenterPixelY;
+    private Rect bombAnimDrawRect;
+    private final Paint bombShockwavePaint;
     private final Paint shiftSelectionPulsePaint;
-    private final Paint gravitySelectionPulsePaint;
     private int touchDownX;
     private int touchDownY;
     private final Paint shiftEdgeDissolvePaint;
@@ -305,6 +330,17 @@ public class GameBoard {
     private Rect statusBestRect;
     private int[] secretCodeProgress;
     private long secretCodeLastTapMs;
+
+    // self-play / watch mode
+    private boolean selfPlayActive;
+    private int     selfPlayDelayCounter;
+    private int[][] selfPlayQueue;        // {pixelX, pixelY, motionAction, delayFrames}
+    private int     selfPlayQueueIdx;
+    private int selfPlayTapAnimX;
+    private int selfPlayTapAnimY;
+    private int selfPlayTapAnimCounter;
+    private Paint selfPlayTapPaint;
+    private Paint selfPlayIndicatorPaint;
 
     // split-flap HUD animation (score=0, level=1, best=2)
     private static final int MAX_HUD_DIGITS = 8;
@@ -378,7 +414,7 @@ public class GameBoard {
     private Rect delLineRect;
     private Rect shiftLineRect;
     private Rect colorClearRect;
-    private Rect gravityRect;
+    private Rect bombRect;
     private Rect undoSlotRect;
     private Rect swapSlotRect;
     private Rect jumpSlotRect;
@@ -386,7 +422,7 @@ public class GameBoard {
     private Rect delLineSlotRect;
     private Rect shiftLineSlotRect;
     private Rect colorClearSlotRect;
-    private Rect gravitySlotRect;
+    private Rect bombSlotRect;
     private Rect undoBuyRect;
     private Rect swapBuyRect;
     private Rect jumpBuyRect;
@@ -394,7 +430,7 @@ public class GameBoard {
     private Rect delLineBuyRect;
     private Rect shiftLineBuyRect;
     private Rect colorClearBuyRect;
-    private Rect gravityBuyRect;
+    private Rect bombBuyRect;
     private Drawable undo;
     private Drawable jump;
     private Drawable swap;
@@ -402,7 +438,7 @@ public class GameBoard {
     private Drawable delLine;
     private Drawable shiftLine;
     private Drawable colorClearDrawable;
-    private Drawable gravityIcon;
+    private Drawable bombIcon;
     private int undoCounter;
     private int swapCounter;
     private int jumpCounter;
@@ -410,7 +446,7 @@ public class GameBoard {
     private int delLineCounter;
     private int shiftLineCounter;
     private int colorClearCounter;
-    private int gravityCounter;
+    private int bombCounter;
 
     private boolean undoSelected;
     private boolean swapSelected;
@@ -419,7 +455,7 @@ public class GameBoard {
     private boolean delLineSelected;
     private boolean shiftLineSelected;
     private boolean colorClearSelected;
-    private boolean gravitySelected;
+    private boolean bombSelected;
 
     private String undoText;
     private String swapText;
@@ -428,7 +464,7 @@ public class GameBoard {
     private String delLineText;
     private String shiftLineText;
     private String colorClearText;
-    private String gravityText;
+    private String bombText;
     private Paint buyPaint;
     private Paint buyBoxPaint;
     private Paint bonusSlotCardPaint;
@@ -483,6 +519,7 @@ public class GameBoard {
         }
 
         this.highScore = prefs.getLong(PREF_KEY_HIGHSCORE, 0);
+        this.autoHighScore = prefs.getLong(PREF_KEY_AUTO_HIGHSCORE, 0);
         this.highscoreLockedByCheat = false;
 
 
@@ -535,9 +572,8 @@ public class GameBoard {
         shiftSelectionPulsePaint.setStyle(Paint.Style.STROKE);
         shiftSelectionPulsePaint.setColor(0xfff7d774);
 
-        gravitySelectionPulsePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        gravitySelectionPulsePaint.setStyle(Paint.Style.STROKE);
-        gravitySelectionPulsePaint.setColor(BONUS_ACCENT_COLORS[7]);
+        bombShockwavePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        bombShockwavePaint.setStyle(Paint.Style.STROKE);
 
         statusPanelRect = new RectF();
         bonusSlotRect = new RectF();
@@ -576,6 +612,15 @@ public class GameBoard {
             colorArray[i] = getColor(r, g, b);
         }
         colorArray[5] = getColor(0x80, 0x10, 0x80);
+
+        selfPlayTapPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        selfPlayTapPaint.setStyle(Paint.Style.STROKE);
+        selfPlayTapPaint.setColor(0xFFFFFFFF);
+
+        selfPlayIndicatorPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        selfPlayIndicatorPaint.setColor(0xFFFFFFFF);
+        selfPlayIndicatorPaint.setFakeBoldText(true);
+
         gameInit();
 
     }
@@ -593,7 +638,7 @@ public class GameBoard {
         nextScoreForBonus = getBonusStepForLevel(1);
 
         highscoreExceeded = false;
-
+        autoHighscoreExceeded = false;
 
         undoCounter = 0;
         swapCounter = 0;
@@ -602,7 +647,7 @@ public class GameBoard {
         delLineCounter = 0;
         shiftLineCounter = 0;
         colorClearCounter = 0;
-        gravityCounter = 0;
+        bombCounter = 0;
         addBonusCount(getWeightedRandomBonusIndex(), 1);
         addBonusCount(getWeightedRandomBonusIndex(), 1);
 
@@ -617,7 +662,6 @@ public class GameBoard {
         lineSelectionRow = -1;
         lineSelectionCol = -1;
         shiftSelectionPulseTick = 0;
-        gravitySelectionPulseTick = 0;
         touchDownX = 0;
         touchDownY = 0;
         lineDissolveAnimationRunning = false;
@@ -628,11 +672,10 @@ public class GameBoard {
         colorClearRects = null;
         colorClearPaints = null;
         colorClearTexts = null;
-        gravityAnimationRunning = false;
-        gravityAnimStartRects = null;
-        gravityAnimEndRects = null;
-        gravityAnimPaints = null;
-        gravityAnimTexts = null;
+        bombAnimationRunning = false;
+        bombBlastRects = null;
+        bombBlastPaints = null;
+        bombBlastTexts = null;
         levelPruneAnimationRunning = false;
         levelPruneCoords = null;
         levelPruneRects = null;
@@ -645,6 +688,11 @@ public class GameBoard {
         levelHintText = getNextLevelHintText();
         updateBonusValues();
         resetHudDisplayedValues();
+
+        // Reset self-play cycle but keep active flag
+        selfPlayQueue = null;
+        selfPlayDelayCounter = SELF_PLAY_MOVE_DELAY;
+        selfPlayTapAnimCounter = 0;
     }
 
     private int getColor(int x, int y) {
@@ -683,7 +731,6 @@ public class GameBoard {
 
         drawGameboard(canvas);
         drawLineSelectionPulse(canvas);
-        drawGravitySelectionOverlay(canvas);
         drawMotionRect(canvas);
         drawMergeRects(canvas);
         drawShiftBonusAnimation(canvas);
@@ -705,8 +752,8 @@ public class GameBoard {
         if (colorClearAnimationRunning) {
             drawColorClearAnimation(canvas);
         }
-        if (gravityAnimationRunning) {
-            drawGravityAnimation(canvas);
+        if (bombAnimationRunning) {
+            drawBombAnimation(canvas);
         }
         if (levelPruneAnimationRunning) {
             drawLevelPruneAnimation(canvas);
@@ -720,6 +767,40 @@ public class GameBoard {
 
         if (dropInAnimationRunning) {
             drawDropInAnimation(canvas);
+        }
+
+        if (selfPlayActive) {
+            drawSelfPlayOverlay(canvas);
+        }
+    }
+
+    private void drawSelfPlayOverlay(Canvas canvas) {
+        // Tap-ripple animation
+        if (selfPlayTapAnimCounter > 0) {
+            float t = 1f - (float) selfPlayTapAnimCounter / SELF_PLAY_TAP_ANIM_DUR;
+            float r = cellWidth * 0.52f * t;
+            int   a = (int) (200 * (1f - t));
+            selfPlayTapPaint.setAlpha(a);
+            selfPlayTapPaint.setStrokeWidth(6f - 4f * t);
+            canvas.drawCircle(selfPlayTapAnimX, selfPlayTapAnimY, r, selfPlayTapPaint);
+        }
+
+        // "AUTO" badge in top-left corner
+        if (canvasWidth > 0) {
+            float badgeFontSize = cellHeight * 0.18f;
+            selfPlayIndicatorPaint.setTextSize(badgeFontSize);
+            float badgeX = RECT_BORDER * 2f;
+            float badgeY = badgeFontSize + RECT_BORDER;
+            // semi-transparent background pill
+            Paint bgPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+            bgPaint.setColor(0xAA000000);
+            float padH = badgeFontSize * 0.4f, padV = badgeFontSize * 0.25f;
+            float textW = selfPlayIndicatorPaint.measureText("AUTO");
+            RectF pill = new RectF(badgeX - padH, badgeY - badgeFontSize - padV,
+                                   badgeX + textW + padH, badgeY + padV);
+            canvas.drawRoundRect(pill, padH, padH, bgPaint);
+            selfPlayIndicatorPaint.setAlpha(255);
+            canvas.drawText("AUTO", badgeX, badgeY, selfPlayIndicatorPaint);
         }
     }
 
@@ -745,20 +826,6 @@ public class GameBoard {
         for (int i = 0; i < height; i++) {
             Rect cellRect = rectArray[lineSelectionCol][i];
             if (cellRect != null) canvas.drawRect(cellRect, shiftSelectionPulsePaint);
-        }
-    }
-
-    private void drawGravitySelectionOverlay(Canvas canvas) {
-        if (!gravitySelected) return;
-        float pulse = (float) (Math.sin((2.0f * Math.PI * gravitySelectionPulseTick) / SHIFT_SELECTION_PULSE_CYCLE) * 0.5f + 0.5f);
-        gravitySelectionPulsePaint.setStrokeWidth(4.0f + 8.0f * pulse);
-        gravitySelectionPulsePaint.setAlpha(80 + (int) (150.0f * pulse));
-        for (int x = 0; x < width; x++) {
-            for (int y = 0; y < height; y++) {
-                if (gameBoardArray.get(x, y) != -1 && rectArray[x][y] != null) {
-                    canvas.drawRect(rectArray[x][y], gravitySelectionPulsePaint);
-                }
-            }
         }
     }
 
@@ -992,8 +1059,6 @@ public class GameBoard {
         float cardBottom = canvasHeight - 2.0f * RECT_BORDER;
         float cardWidth = (canvasWidth - 2.0f * cardLeft - 2.0f * cardGap) / 3.0f;
         float cornerRadius = Math.min(HUD_CORNER_RADIUS, (cardBottom - cardTop) / 3.0f);
-        int bestAccentColor = highscoreExceeded ? HUD_BEST_NEW_RECORD_ACCENT_COLOR : HUD_BEST_ACCENT_COLOR;
-
         statusScoreRect = new Rect((int) cardLeft, (int) cardTop, (int) (cardLeft + cardWidth), (int) cardBottom);
         drawStatusPanel(canvas, cardLeft, cardTop, cardLeft + cardWidth, cardBottom,
                 "SCORE", getScoreText(score), HUD_SCORE_ACCENT_COLOR, cornerRadius, HUD_SLOT_SCORE);
@@ -1003,8 +1068,15 @@ public class GameBoard {
                 "LEVEL", Integer.toString(level), HUD_LEVEL_ACCENT_COLOR, cornerRadius, HUD_SLOT_LEVEL);
         cardLeft += cardWidth + cardGap;
         statusBestRect = new Rect((int) cardLeft, (int) cardTop, (int) (cardLeft + cardWidth), (int) cardBottom);
-        drawStatusPanel(canvas, cardLeft, cardTop, cardLeft + cardWidth, cardBottom,
-                "BEST", getScoreText(highScore), bestAccentColor, cornerRadius, HUD_SLOT_BEST);
+        if (selfPlayActive) {
+            int autoColor = autoHighscoreExceeded ? HUD_BEST_NEW_RECORD_ACCENT_COLOR : 0xFF66D8FF;
+            drawStatusPanel(canvas, cardLeft, cardTop, cardLeft + cardWidth, cardBottom,
+                    "AUTO", getScoreText(autoHighScore), autoColor, cornerRadius, HUD_SLOT_BEST);
+        } else {
+            int bestColor = highscoreExceeded ? HUD_BEST_NEW_RECORD_ACCENT_COLOR : HUD_BEST_ACCENT_COLOR;
+            drawStatusPanel(canvas, cardLeft, cardTop, cardLeft + cardWidth, cardBottom,
+                    "BEST", getScoreText(highScore), bestColor, cornerRadius, HUD_SLOT_BEST);
+        }
     }
 
     private void drawStatusPanel(Canvas canvas, float left, float top, float right, float bottom,
@@ -1071,7 +1143,7 @@ public class GameBoard {
     private void resetHudDisplayedValues() {
         initHudSlot(HUD_SLOT_SCORE, getScoreText(score));
         initHudSlot(HUD_SLOT_LEVEL, Integer.toString(level));
-        initHudSlot(HUD_SLOT_BEST,  getScoreText(highScore));
+        initHudSlot(HUD_SLOT_BEST,  getScoreText(selfPlayActive ? autoHighScore : highScore));
     }
 
     private void initHudSlot(int slot, String text) {
@@ -1089,7 +1161,7 @@ public class GameBoard {
     private void updateHudFlips() {
         updateSlotTargets(HUD_SLOT_SCORE, getScoreText(score));
         updateSlotTargets(HUD_SLOT_LEVEL, Integer.toString(level));
-        updateSlotTargets(HUD_SLOT_BEST,  getScoreText(highScore));
+        updateSlotTargets(HUD_SLOT_BEST,  getScoreText(selfPlayActive ? autoHighScore : highScore));
 
         for (int slot = 0; slot < 3; slot++) {
             for (int d = 0; d < hudDigitCount[slot]; d++) {
@@ -1309,7 +1381,7 @@ public class GameBoard {
         drawBonusSlot(canvas, undo, undoRect, undoText, undoBuyRect, BUY_COST_UNDO, BONUS_ACCENT_COLORS[0], undoSelected, bonusSlotWidth);
         drawBonusSlot(canvas, dissolve, dissolveRect, dissolveText, dissolveBuyRect, BUY_COST_DISSOLVE, BONUS_ACCENT_COLORS[1], dissolveSelected, bonusSlotWidth);
         drawBonusSlot(canvas, swap, swapRect, swapText, swapBuyRect, BUY_COST_SWAP, BONUS_ACCENT_COLORS[2], swapSelected, bonusSlotWidth);
-        drawBonusSlot(canvas, gravityIcon, gravityRect, gravityText, gravityBuyRect, BUY_COST_GRAVITY, BONUS_ACCENT_COLORS[3], gravitySelected, bonusSlotWidth);
+        drawBonusSlot(canvas, bombIcon, bombRect, bombText, bombBuyRect, BUY_COST_BOMB, BONUS_ACCENT_COLORS[3], bombSelected, bonusSlotWidth);
         drawBonusSlot(canvas, shiftLine, shiftLineRect, shiftLineText, shiftLineBuyRect, BUY_COST_SHIFT_LINE, BONUS_ACCENT_COLORS[4], shiftLineSelected, bonusSlotWidth);
         drawBonusSlot(canvas, jump, jumpRect, jumpText, jumpBuyRect, BUY_COST_JUMP, BONUS_ACCENT_COLORS[5], jumpSelected, bonusSlotWidth);
         drawBonusSlot(canvas, delLine, delLineRect, delLineText, delLineBuyRect, BUY_COST_DEL_LINE, BONUS_ACCENT_COLORS[6], delLineSelected, bonusSlotWidth);
@@ -1455,7 +1527,7 @@ public class GameBoard {
         delLineRect   = createBonusIconRect(1, 0, gridTop, bonusSlotWidth, bonusIconWidthLarge);
         shiftLineRect = createBonusIconRect(1, 1, gridTop, bonusSlotWidth, bonusIconWidthLarge);
         colorClearRect= createBonusIconRect(1, 2, gridTop, bonusSlotWidth, bonusIconWidthLarge);
-        gravityRect   = createBonusIconRect(1, 3, gridTop, bonusSlotWidth, bonusIconWidthLarge);
+        bombRect      = createBonusIconRect(1, 3, gridTop, bonusSlotWidth, bonusIconWidthLarge);
 
         undoSlotRect = createBonusSlotRect(0, 0, gridTop, bonusSlotWidth);
         swapSlotRect = createBonusSlotRect(0, 1, gridTop, bonusSlotWidth);
@@ -1464,7 +1536,7 @@ public class GameBoard {
         delLineSlotRect = createBonusSlotRect(1, 0, gridTop, bonusSlotWidth);
         shiftLineSlotRect = createBonusSlotRect(1, 1, gridTop, bonusSlotWidth);
         colorClearSlotRect = createBonusSlotRect(1, 2, gridTop, bonusSlotWidth);
-        gravitySlotRect = createBonusSlotRect(1, 3, gridTop, bonusSlotWidth);
+        bombSlotRect    = createBonusSlotRect(1, 3, gridTop, bonusSlotWidth);
 
         undoBuyRect = createBuyRectForSlot(0, 0, gridTop, bonusSlotWidth);
         swapBuyRect = createBuyRectForSlot(0, 1, gridTop, bonusSlotWidth);
@@ -1473,7 +1545,7 @@ public class GameBoard {
         delLineBuyRect = createBuyRectForSlot(1, 0, gridTop, bonusSlotWidth);
         shiftLineBuyRect = createBuyRectForSlot(1, 1, gridTop, bonusSlotWidth);
         colorClearBuyRect = createBuyRectForSlot(1, 2, gridTop, bonusSlotWidth);
-        gravityBuyRect = createBuyRectForSlot(1, 3, gridTop, bonusSlotWidth);
+        bombBuyRect    = createBuyRectForSlot(1, 3, gridTop, bonusSlotWidth);
 
         undo = ContextCompat.getDrawable(context, R.drawable.undo_circle_icon);
         if (undo != null) undo.setBounds(undoRect);
@@ -1496,8 +1568,8 @@ public class GameBoard {
         colorClearDrawable = ContextCompat.getDrawable(context, R.drawable.color_clear_icon);
         if (colorClearDrawable != null) colorClearDrawable.setBounds(colorClearRect);
 
-        gravityIcon = ContextCompat.getDrawable(context, R.drawable.gravity_icon);
-        if (gravityIcon != null) gravityIcon.setBounds(gravityRect);
+        bombIcon = ContextCompat.getDrawable(context, R.drawable.bomb_icon);
+        if (bombIcon != null) bombIcon.setBounds(bombRect);
 
         bonusPaint = new Paint();
         bonusPaint.setColor(TEXT_COLOR_WHITE);
@@ -1538,7 +1610,7 @@ public class GameBoard {
         lineDissolveDrawRect = new Rect();
         levelPruneDrawRect = new Rect();
         colorClearDrawRect = new Rect();
-        gravityAnimDrawRect = new Rect();
+        bombAnimDrawRect = new Rect();
     }
 
     private Rect createBonusIconRect(int row, int col, int gridTop, int slotWidth, int iconWidth) {
@@ -1621,8 +1693,8 @@ public class GameBoard {
             animateColorClearBonus();
             return;
         }
-        if (gravityAnimationRunning) {
-            animateGravityBonus();
+        if (bombAnimationRunning) {
+            animateBombBonus();
             return;
         }
         if (levelPruneAnimationRunning) {
@@ -1636,9 +1708,6 @@ public class GameBoard {
 
         if (lineSelectionActive) {
             shiftSelectionPulseTick = (shiftSelectionPulseTick + 1) % SHIFT_SELECTION_PULSE_CYCLE;
-        }
-        if (gravitySelected) {
-            gravitySelectionPulseTick = (gravitySelectionPulseTick + 1) % SHIFT_SELECTION_PULSE_CYCLE;
         }
 
 
@@ -1686,6 +1755,170 @@ public class GameBoard {
             }
         }
 
+        if (selfPlayActive) tickSelfPlay();
+        if (selfPlayTapAnimCounter > 0) selfPlayTapAnimCounter--;
+
+    }
+
+    // -------------------------------------------------------------------------
+    // Self-play / watch mode
+    // -------------------------------------------------------------------------
+
+    public void toggleSelfPlay() {
+        selfPlayActive = !selfPlayActive;
+        if (selfPlayActive) {
+            selfPlayQueue = null;
+            selfPlayDelayCounter = SELF_PLAY_MOVE_DELAY;
+            selfPlayTapAnimCounter = 0;
+            if (status == statusT.SELECT_TARGET_POSITION) {
+                resetCell(startPositionX, startPositionY);
+                status = statusT.SELECT_START_POSITION;
+            }
+        }
+        // Resync BEST slot to show the right high-score counter
+        initHudSlot(HUD_SLOT_BEST, getScoreText(selfPlayActive ? autoHighScore : highScore));
+        alertAnimationCounter = ALERT_TIME / 2;
+    }
+
+    public boolean isSelfPlayActive() { return selfPlayActive; }
+
+    private void tickSelfPlay() {
+        // Auto-restart after game over
+        if (status == statusT.GAME_OVER) {
+            if (--selfPlayDelayCounter <= 0) {
+                onTouchEvent(MotionEvent.ACTION_DOWN, canvasWidth / 2, canvasHeight / 4);
+                // gameInit() already resets selfPlayDelayCounter to SELF_PLAY_MOVE_DELAY
+            }
+            return;
+        }
+
+        // Execute pending action queue
+        if (selfPlayQueue != null) {
+            if (--selfPlayDelayCounter <= 0) {
+                int[] step = selfPlayQueue[selfPlayQueueIdx];
+                int px = step[0], py = step[1], action = step[2], nextDelay = step[3];
+                triggerSelfPlayTapAnim(px, py);
+                onTouchEvent(action, px, py);
+                selfPlayQueueIdx++;
+                if (selfPlayQueueIdx >= selfPlayQueue.length) {
+                    selfPlayQueue = null;
+                    selfPlayDelayCounter = SELF_PLAY_MOVE_DELAY;
+                } else {
+                    selfPlayDelayCounter = nextDelay;
+                }
+            }
+            return;
+        }
+
+        // Compute next decision when idle
+        if (status == statusT.SELECT_START_POSITION) {
+            if (--selfPlayDelayCounter <= 0) {
+                int[] bonusCounts = getBonusCounts();
+                int freeCells = gameBoardArray.getNumFreeCells();
+                SelfPlayBot.BotDecision dec = SelfPlayBot.computeDecision(
+                        getBoardSnapshot(), width, height, bonusCounts, freeCells);
+                if (dec != null) {
+                    selfPlayQueue = buildActionQueue(dec);
+                    selfPlayQueueIdx = 0;
+                    selfPlayDelayCounter = 0;
+                } else {
+                    selfPlayDelayCounter = SELF_PLAY_MOVE_DELAY;
+                }
+            }
+        }
+    }
+
+    /** Converts a BotDecision into a sequence of {pixelX, pixelY, action, delayFrames}. */
+    private int[][] buildActionQueue(SelfPlayBot.BotDecision dec) {
+        int gap = SELF_PLAY_TAP_GAP;
+        int dn  = MotionEvent.ACTION_DOWN;
+        int up  = MotionEvent.ACTION_UP;
+        switch (dec.type) {
+            case NORMAL:
+                return new int[][]{
+                    {gridToPixelX(dec.p1x), gridToPixelY(dec.p1y), dn, gap},
+                    {gridToPixelX(dec.p2x), gridToPixelY(dec.p2y), dn, 0}};
+            case JUMP: {
+                Rect slot = getSlotRectByIndex(SelfPlayBot.IDX_JUMP);
+                return new int[][]{
+                    {slot.centerX(), slot.centerY(), dn, gap},
+                    {gridToPixelX(dec.p1x), gridToPixelY(dec.p1y), dn, gap},
+                    {gridToPixelX(dec.p2x), gridToPixelY(dec.p2y), dn, 0}};
+            }
+            case DISSOLVE: {
+                Rect slot = getSlotRectByIndex(SelfPlayBot.IDX_DISSOLVE);
+                return new int[][]{
+                    {slot.centerX(), slot.centerY(), dn, gap},
+                    {gridToPixelX(dec.p1x), gridToPixelY(dec.p1y), dn, 0}};
+            }
+            case BOMB: {
+                Rect slot = getSlotRectByIndex(SelfPlayBot.IDX_BOMB);
+                return new int[][]{
+                    {slot.centerX(), slot.centerY(), dn, gap},
+                    {gridToPixelX(dec.p1x), gridToPixelY(dec.p1y), dn, 0}};
+            }
+            case COLOR_CLEAR: {
+                Rect slot = getSlotRectByIndex(SelfPlayBot.IDX_COLOR_CLEAR);
+                return new int[][]{
+                    {slot.centerX(), slot.centerY(), dn, gap},
+                    {gridToPixelX(dec.p1x), gridToPixelY(dec.p1y), dn, 0}};
+            }
+            case DEL_LINE: {
+                Rect slot = getSlotRectByIndex(SelfPlayBot.IDX_DEL_LINE);
+                // dec.p1x = lineIdx, dec.flag = isRow
+                // Tap any cell in the row/col, then swipe to trigger
+                int tapGx = dec.flag ? 0 : dec.p1x;
+                int tapGy = dec.flag ? dec.p1x : 0;
+                int tapPx = gridToPixelX(tapGx);
+                int tapPy = gridToPixelY(tapGy);
+                int swipe = (int) (dec.flag ? cellWidth * 0.65f : cellHeight * 0.65f);
+                int upPx  = dec.flag ? tapPx + swipe : tapPx;
+                int upPy  = dec.flag ? tapPy : tapPy + swipe;
+                return new int[][]{
+                    {slot.centerX(), slot.centerY(), dn, gap},
+                    {tapPx, tapPy, dn, gap},
+                    {upPx,  upPy,  up, 0}};
+            }
+        }
+        return null;
+    }
+
+    private int[] getBonusCounts() {
+        return new int[]{
+            undoCounter, dissolveCounter, swapCounter, bombCounter,
+            shiftLineCounter, jumpCounter, delLineCounter, colorClearCounter
+        };
+    }
+
+    private Rect getSlotRectByIndex(int idx) {
+        switch (idx) {
+            case SelfPlayBot.IDX_UNDO:        return undoSlotRect;
+            case SelfPlayBot.IDX_DISSOLVE:    return dissolveSlotRect;
+            case SelfPlayBot.IDX_SWAP:        return swapSlotRect;
+            case SelfPlayBot.IDX_BOMB:        return bombSlotRect;
+            case SelfPlayBot.IDX_SHIFT_LINE:  return shiftLineSlotRect;
+            case SelfPlayBot.IDX_JUMP:        return jumpSlotRect;
+            case SelfPlayBot.IDX_DEL_LINE:    return delLineSlotRect;
+            case SelfPlayBot.IDX_COLOR_CLEAR: return colorClearSlotRect;
+        }
+        return null;
+    }
+
+    private void triggerSelfPlayTapAnim(int px, int py) {
+        selfPlayTapAnimX = px;
+        selfPlayTapAnimY = py;
+        selfPlayTapAnimCounter = SELF_PLAY_TAP_ANIM_DUR;
+    }
+
+    private int gridToPixelX(int gx) { return (int) (gx * cellWidth  + cellWidth  / 2f); }
+    private int gridToPixelY(int gy) { return (int) (gy * cellHeight + cellHeight / 2f); }
+
+    private int[][] getBoardSnapshot() {
+        int[][] snap = new int[width][height];
+        for (int y = 0; y < height; y++)
+            for (int x = 0; x < width; x++)
+                snap[x][y] = gameBoardArray.get(x, y);
+        return snap;
     }
 
     private void handleNewCellDropIns() {
@@ -2092,122 +2325,133 @@ public class GameBoard {
         }
     }
 
-    private boolean startGravityAnimation(boolean isHorizontal, boolean positiveDir) {
-        java.util.ArrayList<int[]> moves = new java.util.ArrayList<>();
-
-        if (!isHorizontal) {
-            for (int x = 0; x < width; x++) {
-                java.util.ArrayList<int[]> col = new java.util.ArrayList<>();
-                for (int y = 0; y < height; y++) {
-                    int v = gameBoardArray.get(x, y);
-                    if (v != -1) col.add(new int[]{y, v});
-                }
-                int k = col.size();
-                for (int i = 0; i < k; i++) {
-                    int srcY = col.get(i)[0];
-                    int dstY = positiveDir ? (height - k + i) : i;
-                    if (srcY != dstY) {
-                        moves.add(new int[]{x, srcY, x, dstY, col.get(i)[1]});
-                    }
-                }
-            }
-        } else {
-            for (int y = 0; y < height; y++) {
-                java.util.ArrayList<int[]> row = new java.util.ArrayList<>();
-                for (int x = 0; x < width; x++) {
-                    int v = gameBoardArray.get(x, y);
-                    if (v != -1) row.add(new int[]{x, v});
-                }
-                int k = row.size();
-                for (int i = 0; i < k; i++) {
-                    int srcX = row.get(i)[0];
-                    int dstX = positiveDir ? (width - k + i) : i;
-                    if (srcX != dstX) {
-                        moves.add(new int[]{srcX, y, dstX, y, row.get(i)[1]});
+    private void startBombAnimation(int cx, int cy) {
+        java.util.ArrayList<int[]> cells = new java.util.ArrayList<>();
+        for (int dx = -1; dx <= 1; dx++) {
+            for (int dy = -1; dy <= 1; dy++) {
+                int nx = cx + dx, ny = cy + dy;
+                if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
+                    int val = gameBoardArray.get(nx, ny);
+                    if (val != -1) {
+                        cells.add(new int[]{nx, ny, paintArray[nx][ny].getColor()});
+                        gameBoardArray.set(nx, ny, -1);
+                        paintArray[nx][ny].setColor(getColor(nx, ny));
                     }
                 }
             }
         }
 
-        if (moves.isEmpty()) {
-            return false;
-        }
-
-        int n = moves.size();
-        gravityAnimStartRects = new Rect[n];
-        gravityAnimEndRects   = new Rect[n];
-        gravityAnimPaints     = new Paint[n];
-        gravityAnimTexts      = new String[n];
-        gravityAnimValues     = new int[n];
-        gravityAnimDestX      = new int[n];
-        gravityAnimDestY      = new int[n];
-
+        int n = cells.size();
+        bombBlastRects  = new Rect[n];
+        bombBlastPaints = new Paint[n];
+        bombBlastTexts  = new String[n];
         for (int i = 0; i < n; i++) {
-            int srcX = moves.get(i)[0], srcY = moves.get(i)[1];
-            int dstX = moves.get(i)[2], dstY = moves.get(i)[3];
-            int val  = moves.get(i)[4];
-            gravityAnimStartRects[i] = new Rect(rectArray[srcX][srcY]);
-            gravityAnimEndRects[i]   = new Rect(rectArray[dstX][dstY]);
+            int bx = cells.get(i)[0], by = cells.get(i)[1];
+            bombBlastRects[i] = new Rect(rectArray[bx][by]);
             Paint p = new Paint();
-            p.setColor(paintArray[srcX][srcY].getColor());
-            gravityAnimPaints[i] = p;
-            gravityAnimTexts[i]  = getText(srcX, srcY);
-            gravityAnimValues[i] = val;
-            gravityAnimDestX[i]  = dstX;
-            gravityAnimDestY[i]  = dstY;
-            gameBoardArray.set(srcX, srcY, -1);
-            paintArray[srcX][srcY].setColor(getColor(srcX, srcY));
+            p.setColor(cells.get(i)[2]);
+            bombBlastPaints[i] = p;
+            bombBlastTexts[i]  = getText(bx, by);
         }
 
-        gravityAnimationRunning  = true;
-        gravityAnimationCounter  = GRAVITY_ANIMATION_STEPS;
-        gravityCounter--;
-        gravitySelected = false;
-        gravitySelectionPulseTick = 0;
-        return true;
+        Rect centerRect = rectArray[cx][cy];
+        if (centerRect != null) {
+            bombCenterPixelX = centerRect.centerX();
+            bombCenterPixelY = centerRect.centerY();
+        } else {
+            bombCenterPixelX = (int) ((cx + 0.5f) * cellWidth);
+            bombCenterPixelY = (int) ((cy + 0.5f) * cellHeight);
+        }
+
+        bombAnimationRunning  = true;
+        bombAnimationCounter  = BOMB_ANIMATION_STEPS;
+        bombCounter--;
+        bombSelected = false;
     }
 
-    private void animateGravityBonus() {
-        gravityAnimationCounter--;
-        if (gravityAnimationCounter <= 0) {
-            finishGravityAnimation();
+    private void animateBombBonus() {
+        bombAnimationCounter--;
+        if (bombAnimationCounter <= 0) {
+            finishBombAnimation();
         }
     }
 
-    private void finishGravityAnimation() {
-        for (int i = 0; i < gravityAnimValues.length; i++) {
-            gameBoardArray.set(gravityAnimDestX[i], gravityAnimDestY[i], gravityAnimValues[i]);
-            paintArray[gravityAnimDestX[i]][gravityAnimDestY[i]].setColor(
-                    getColor(gravityAnimDestX[i], gravityAnimDestY[i]));
-        }
-        gravityAnimationRunning = false;
-        gravityAnimStartRects = null;
-        gravityAnimEndRects   = null;
-        gravityAnimPaints     = null;
-        gravityAnimTexts      = null;
-        gravityAnimValues     = null;
-        gravityAnimDestX      = null;
-        gravityAnimDestY      = null;
+    private void finishBombAnimation() {
+        bombAnimationRunning = false;
+        bombBlastRects  = null;
+        bombBlastPaints = null;
+        bombBlastTexts  = null;
         continueAfterBonusBoardMutation();
         updateBonusValues();
     }
 
-    private void drawGravityAnimation(Canvas canvas) {
-        if (!gravityAnimationRunning || gravityAnimStartRects == null) {
-            return;
+    private void drawBombAnimation(Canvas canvas) {
+        if (!bombAnimationRunning) return;
+        float t = 1.0f - (float) bombAnimationCounter / (float) BOMB_ANIMATION_STEPS;
+
+        // Blast cells: flash orange then shrink away
+        if (bombBlastRects != null) {
+            for (int i = 0; i < bombBlastRects.length; i++) {
+                Rect r = bombBlastRects[i];
+                // Flash peak at t=0.15: triangle shape 0→1→0 over t=0..0.30
+                float flashRaw = Math.max(0.0f, 1.0f - Math.abs(t - 0.15f) / 0.15f);
+                // Shrink from t=0.20 to t=0.85
+                float shrinkT = Math.max(0.0f, Math.min(1.0f, (t - 0.20f) / 0.65f));
+                shrinkT = shrinkT * shrinkT; // ease-in
+                int inset = (int) (shrinkT * r.width() * 0.5f);
+                int left = r.left + inset, top = r.top + inset;
+                int right = r.right - inset, bottom = r.bottom - inset;
+                if (right <= left || bottom <= top) continue;
+
+                int cellAlpha = (int) ((1.0f - shrinkT) * 255);
+                int origColor = bombBlastPaints[i].getColor();
+                int blendedColor = blendColors(origColor, 0xFFFFDD44, flashRaw * 0.88f);
+                bombAnimDrawRect.set(left, top, right, bottom);
+                bombBlastPaints[i].setColor(blendedColor);
+                bombBlastPaints[i].setAlpha(cellAlpha);
+                canvas.drawRect(bombAnimDrawRect, bombBlastPaints[i]);
+
+                if (shrinkT < 0.45f && bombBlastTexts[i] != null && !bombBlastTexts[i].isEmpty()) {
+                    shiftEdgeDissolveTextPaint.setTextSize(getTextSize(bombBlastTexts[i]));
+                    shiftEdgeDissolveTextPaint.setAlpha(Math.max(0, cellAlpha - 60));
+                    canvas.drawText(bombBlastTexts[i],
+                            getTextPosX(bombAnimDrawRect, bombBlastTexts[i], shiftEdgeDissolveTextPaint),
+                            getTextPosY(bombAnimDrawRect, shiftEdgeDissolveTextPaint),
+                            shiftEdgeDissolveTextPaint);
+                }
+
+                bombBlastPaints[i].setColor(origColor);
+                bombBlastPaints[i].setAlpha(255);
+            }
         }
-        float t = 1.0f - (float) gravityAnimationCounter / (float) GRAVITY_ANIMATION_STEPS;
-        // ease-in: blocks accelerate like falling
-        t = t * t;
-        for (int i = 0; i < gravityAnimStartRects.length; i++) {
-            Rect src = gravityAnimStartRects[i];
-            Rect dst = gravityAnimEndRects[i];
-            gravityAnimDrawRect.left   = (int) (src.left   + t * (dst.left   - src.left));
-            gravityAnimDrawRect.top    = (int) (src.top    + t * (dst.top    - src.top));
-            gravityAnimDrawRect.right  = (int) (src.right  + t * (dst.right  - src.right));
-            gravityAnimDrawRect.bottom = (int) (src.bottom + t * (dst.bottom - src.bottom));
-            drawCell(canvas, gravityAnimDrawRect, gravityAnimPaints[i], gravityAnimTexts[i]);
+
+        // Shockwave ring 1: orange, fast
+        if (t > 0.05f) {
+            float r1t = Math.min((t - 0.05f) / 0.55f, 1.0f);
+            float r1radius = r1t * (float) Math.sqrt(cellWidth * cellWidth + cellHeight * cellHeight) * 2.4f;
+            bombShockwavePaint.setColor(0xFFFF7B35);
+            bombShockwavePaint.setAlpha((int) ((1.0f - r1t) * 230));
+            bombShockwavePaint.setStrokeWidth(Math.max(2.0f, 14.0f * (1.0f - r1t)));
+            canvas.drawCircle(bombCenterPixelX, bombCenterPixelY, r1radius, bombShockwavePaint);
         }
+
+        // Shockwave ring 2: yellow, slower
+        if (t > 0.18f) {
+            float r2t = Math.min((t - 0.18f) / 0.72f, 1.0f);
+            float r2radius = r2t * (float) Math.sqrt(cellWidth * cellWidth + cellHeight * cellHeight) * 2.8f;
+            bombShockwavePaint.setColor(0xFFFFEE00);
+            bombShockwavePaint.setAlpha((int) ((1.0f - r2t) * 160));
+            bombShockwavePaint.setStrokeWidth(Math.max(1.5f, 8.0f * (1.0f - r2t)));
+            canvas.drawCircle(bombCenterPixelX, bombCenterPixelY, r2radius, bombShockwavePaint);
+        }
+    }
+
+    private static int blendColors(int c1, int c2, float t) {
+        t = Math.max(0.0f, Math.min(1.0f, t));
+        int r = (int) (((c1 >> 16) & 0xFF) * (1.0f - t) + ((c2 >> 16) & 0xFF) * t);
+        int g = (int) (((c1 >>  8) & 0xFF) * (1.0f - t) + ((c2 >>  8) & 0xFF) * t);
+        int b = (int) (( c1        & 0xFF) * (1.0f - t) + ( c2        & 0xFF) * t);
+        return 0xFF000000 | (r << 16) | (g << 8) | b;
     }
 
     private void startShiftBonusAnimation(boolean isRow, int lineIndex, int directionSign) {
@@ -2325,8 +2569,10 @@ public class GameBoard {
                     grantAllBonusesForTesting();
                 } else if (i == 1) {
                     grantLevelUpTestPoints();
-                } else {
+                } else if (i == 2) {
                     resetHighscore();
+                } else {
+                    toggleSelfPlay();
                 }
                 return true;
             }
@@ -2485,6 +2731,11 @@ public class GameBoard {
              highscoreExceeded = true;
              prefs.edit().putLong(PREF_KEY_HIGHSCORE, highScore).apply();
          }
+         if (selfPlayActive && liveScore > autoHighScore) {
+             autoHighScore = liveScore;
+             autoHighscoreExceeded = true;
+             prefs.edit().putLong(PREF_KEY_AUTO_HIGHSCORE, autoHighScore).apply();
+         }
      }
 
     private void startBonusAnimation() {
@@ -2600,7 +2851,7 @@ public class GameBoard {
         delLineText  = Integer.toString(delLineCounter);
         shiftLineText = Integer.toString(shiftLineCounter);
         colorClearText = Integer.toString(colorClearCounter);
-        gravityText  = Integer.toString(gravityCounter);
+        bombText     = Integer.toString(bombCounter);
     }
 
     private long calculateComboScore(int comboSize) {
@@ -2666,7 +2917,7 @@ public class GameBoard {
             case 0: return undoCounter;
             case 1: return dissolveCounter;
             case 2: return swapCounter;
-            case 3: return gravityCounter;
+            case 3: return bombCounter;
             case 4: return shiftLineCounter;
             case 5: return jumpCounter;
             case 6: return delLineCounter;
@@ -2687,7 +2938,7 @@ public class GameBoard {
                 swapCounter += amount;
                 break;
             case 3:
-                gravityCounter += amount;
+                bombCounter += amount;
                 break;
             case 4:
                 shiftLineCounter += amount;
@@ -2731,6 +2982,11 @@ public class GameBoard {
             highScore = score;
             highscoreExceeded = true;
             prefs.edit().putLong(PREF_KEY_HIGHSCORE, highScore).apply();
+        }
+        if (selfPlayActive && score > autoHighScore) {
+            autoHighScore = score;
+            autoHighscoreExceeded = true;
+            prefs.edit().putLong(PREF_KEY_AUTO_HIGHSCORE, autoHighScore).apply();
         }
 
         while (score >= nextScoreForBonus) {
@@ -2836,7 +3092,7 @@ public class GameBoard {
         }
 
         if (dissolveAnimationRunning || lineDissolveAnimationRunning || colorClearAnimationRunning
-                || gravityAnimationRunning || levelPruneAnimationRunning
+                || bombAnimationRunning || levelPruneAnimationRunning
                 || status == statusT.BONUS_SHIFT_ANIMATION) {
             return;
         }
@@ -2932,7 +3188,7 @@ public class GameBoard {
     }
 
     private boolean tryHandleShiftSwipeGesture(int x, int y) {
-        if ((!lineSelectionActive && !gravitySelected) || status != statusT.SELECT_START_POSITION) {
+        if (!lineSelectionActive || status != statusT.SELECT_START_POSITION) {
             return false;
         }
 
@@ -2964,18 +3220,6 @@ public class GameBoard {
             } else {
                 int directionSign = deltaY > 0 ? 1 : -1;
                 startShiftBonusAnimation(false, lineSelectionCol, directionSign);
-            }
-            return true;
-        }
-
-        if (gravitySelected) {
-            if (!horizDominant && !vertDominant) {
-                return false;
-            }
-            boolean isHorizontal = horizDominant;
-            boolean positiveDir  = horizDominant ? (deltaX > 0) : (deltaY > 0);
-            if (!startGravityAnimation(isHorizontal, positiveDir)) {
-                alertAnimationCounter = ALERT_TIME;
             }
             return true;
         }
@@ -3012,8 +3256,9 @@ public class GameBoard {
             return true;
         }
 
-        if (gravitySelected) {
-            return true; // consume tap, direction chosen by swipe
+        if (bombSelected) {
+            startBombAnimation(indexX, indexY);
+            return true;
         }
 
         return false;
@@ -3115,9 +3360,9 @@ public class GameBoard {
             }
             return true;
         }
-        if (gravityBuyRect.contains(x, y)) {
-            if (tryBuyBonus(gravityBuyRect, x, y, BUY_COST_GRAVITY)) {
-                gravityCounter++;
+        if (bombBuyRect.contains(x, y)) {
+            if (tryBuyBonus(bombBuyRect, x, y, BUY_COST_BOMB)) {
+                bombCounter++;
             }
             return true;
         }
@@ -3168,11 +3413,11 @@ public class GameBoard {
             colorClearSelected = !prev;
             return true;
         }
-        if (gravitySlotRect.contains(x, y) && gravityCounter > 0) {
+        if (bombSlotRect.contains(x, y) && bombCounter > 0) {
             leaveTargetSelectionMode();
-            boolean prev = gravitySelected;
+            boolean prev = bombSelected;
             deselectAllBonuses();
-            gravitySelected = !prev;
+            bombSelected = !prev;
             return true;
         }
 
@@ -3199,7 +3444,7 @@ public class GameBoard {
     }
 
     /** Deselects all bonus actions at once. */
-    private void deselectAllBonuses() {
+    public void deselectAllBonuses() {
         undoSelected   = false;
         swapSelected   = false;
         jumpSelected   = false;
@@ -3207,8 +3452,7 @@ public class GameBoard {
         delLineSelected = false;
         shiftLineSelected = false;
         colorClearSelected = false;
-        gravitySelected = false;
-        gravitySelectionPulseTick = 0;
+        bombSelected = false;
         clearLineSelection();
     }
 
@@ -3261,6 +3505,62 @@ public class GameBoard {
             return (1 << (val - 50)) + "E";
         }
         return "";
+    }
+
+    public int getBuyButtonIndexAt(int x, int y) {
+        if (undoBuyRect == null) return -1;
+        Rect[] buys = {
+            undoBuyRect, dissolveBuyRect, swapBuyRect, bombBuyRect,
+            shiftLineBuyRect, jumpBuyRect, delLineBuyRect, colorClearBuyRect
+        };
+        for (int i = 0; i < buys.length; i++) {
+            if (buys[i] != null && buys[i].contains(x, y)) return i;
+        }
+        return -1;
+    }
+
+    public boolean performBuyForIndex(int index) {
+        long cost = getBonusCost(index);
+        if (score < cost) {
+            alertAnimationCounter = ALERT_TIME;
+            return false;
+        }
+        score -= cost;
+        addBonusCount(index, 1);
+        updateBonusValues();
+        return true;
+    }
+
+    public int getBonusSlotIndexAt(int x, int y) {
+        if (undoSlotRect == null) return -1;
+        Rect[] slots = {
+            undoSlotRect, dissolveSlotRect, swapSlotRect, bombSlotRect,
+            shiftLineSlotRect, jumpSlotRect, delLineSlotRect, colorClearSlotRect
+        };
+        for (int i = 0; i < slots.length; i++) {
+            if (slots[i] != null && slots[i].contains(x, y)) return i;
+        }
+        return -1;
+    }
+
+    public static String getBonusName(int index) {
+        return (index >= 0 && index < BONUS_NAMES.length) ? BONUS_NAMES[index] : "";
+    }
+
+    public static String getBonusDescription(int index) {
+        return (index >= 0 && index < BONUS_DESCRIPTIONS.length) ? BONUS_DESCRIPTIONS[index] : "";
+    }
+
+    public static int getBonusAccentColor(int index) {
+        return (index >= 0 && index < BONUS_ACCENT_COLORS.length) ? BONUS_ACCENT_COLORS[index] : 0xffffffff;
+    }
+
+    public static int getBonusDrawableId(int index) {
+        return (index >= 0 && index < BONUS_DRAWABLE_IDS.length) ? BONUS_DRAWABLE_IDS[index] : -1;
+    }
+
+    public static long getBonusCost(int index) {
+        return (index >= 0 && index < BONUS_BUY_COSTS.length) ? BONUS_BUY_COSTS[index] : 0;
     }
 
     public String getScoreText(long val) {

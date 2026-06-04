@@ -1,0 +1,65 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="96dp"
+    android:height="96dp"
+    android:viewportWidth="96"
+    android:viewportHeight="96">
+
+    <!-- Bomb body shadow -->
+    <path
+        android:fillColor="#55000000"
+        android:pathData="M20,52 Q20,86 48,86 Q76,86 76,52 Q76,22 48,22 Q20,22 20,52 Z"/>
+
+    <!-- Bomb body (dark sphere) -->
+    <path
+        android:fillColor="#222222"
+        android:pathData="M18,50 Q18,84 48,84 Q78,84 78,50 Q78,20 48,20 Q18,20 18,50 Z"/>
+
+    <!-- Highlight on body (glossy sheen) -->
+    <path
+        android:fillColor="#44FFFFFF"
+        android:pathData="M30,28 Q38,24 50,26 Q56,27 54,32 Q48,30 38,33 Q32,36 30,28 Z"/>
+
+    <!-- Fuse base (dark metal ring) -->
+    <path
+        android:fillColor="#444444"
+        android:pathData="M42,20 L54,20 L54,16 L42,16 Z"/>
+
+    <!-- Fuse cord -->
+    <path
+        android:strokeColor="#8B6914"
+        android:strokeWidth="3.5"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000"
+        android:pathData="M48,16 Q60,8 68,4"/>
+
+    <!-- Fuse flame (outer glow) -->
+    <path
+        android:fillColor="#FFAA00"
+        android:pathData="M65,2 Q72,-2 74,4 Q72,8 68,6 Q70,10 66,10 Q62,8 63,4 Z"/>
+
+    <!-- Fuse flame (inner bright) -->
+    <path
+        android:fillColor="#FFEE44"
+        android:pathData="M67,3 Q71,0 72,5 Q70,7 68,5 Q69,8 66,8 Q64,6 65,3 Z"/>
+
+    <!-- Explosion sparks -->
+    <path
+        android:strokeColor="#FF6B35"
+        android:strokeWidth="2.5"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000"
+        android:pathData="M74,4 L80,0"/>
+    <path
+        android:strokeColor="#FF6B35"
+        android:strokeWidth="2"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000"
+        android:pathData="M72,2 L76,-4"/>
+    <path
+        android:strokeColor="#FFEE44"
+        android:strokeWidth="2"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000"
+        android:pathData="M76,6 L84,4"/>
+
+</vector>
