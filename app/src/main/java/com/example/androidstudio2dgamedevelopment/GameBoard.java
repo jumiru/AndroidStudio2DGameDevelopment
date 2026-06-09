@@ -404,6 +404,7 @@ public class GameBoard {
     private int animateBonusCounter;
     private int bonusWin;
     private int bonusWin2 = -1;
+    private int bonusWin3 = -1;
     private Rect bonusWinRect;
     private Drawable bonusWinDrawable;
 
@@ -650,6 +651,7 @@ public class GameBoard {
         bombCounter = 0;
         addBonusCount(getWeightedRandomBonusIndex(), 1);
         addBonusCount(getWeightedRandomBonusIndex(), 1);
+        addBonusCount(getWeightedRandomBonusIndex(), 1);
 
         deselectAllBonuses();
         secretCodeProgress = new int[SECRET_CODE_SEQUENCES.length];
@@ -682,6 +684,7 @@ public class GameBoard {
         levelPrunePaints = null;
         levelPruneTexts = null;
         bonusWin2 = -1;
+        bonusWin3 = -1;
 
         level = 1;
         levelText = "Level: " + level;
@@ -2771,6 +2774,10 @@ public class GameBoard {
             bonusWin = bonusWin2;
             bonusWin2 = -1;
             startBonusAnimation();
+        } else if (bonusWin3 >= 0) {
+            bonusWin = bonusWin3;
+            bonusWin3 = -1;
+            startBonusAnimation();
         }
     }
 
@@ -2964,6 +2971,8 @@ public class GameBoard {
         // naturally reduces the chance of receiving the same one again.
         bonusWin2 = getWeightedRandomBonusIndex();
         addBonusCount(bonusWin2, BONUS_AWARD_AMOUNT);
+        bonusWin3 = getWeightedRandomBonusIndex();
+        addBonusCount(bonusWin3, BONUS_AWARD_AMOUNT);
         startBonusAnimation();
     }
 
