@@ -1,6 +1,8 @@
 package com.example.androidstudio2dgamedevelopment;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Deque;
 import java.util.List;
 import java.util.Random;
 import java.util.Set;
@@ -13,12 +15,13 @@ public class GameBoardArray {
     private final int width;
     private final int height;
 
+    private static final int MAX_UNDO_DEPTH = 10;
+
     private final int[][] gameBoardContent;
-    private final int[][] gameBoardBackup;
     private final int[][] searchBoard;
+    private final Deque<int[][]> undoStack = new ArrayDeque<>();
     private final Random rand;
 
-    private boolean gameBoardModified;
     private boolean triggerBackupBeforeNextModification;
 
 
@@ -30,15 +33,16 @@ public class GameBoardArray {
         rand = new Random();
 
         gameBoardContent = new int[width][height];
-        gameBoardBackup  = new int[width][height];
         searchBoard      = new int[width][height];
         clear();
     }
 
     public void clear() {
+        undoStack.clear();
+        triggerBackupBeforeNextModification = false;
         for (int y = 0; y < height; y++) {
             for (int x = 0; x < width; x++) {
-                set(x, y, -1); // -1 means empty
+                gameBoardContent[x][y] = -1;
                 searchBoard[x][y] = 0;
             }
         }
@@ -112,12 +116,11 @@ public class GameBoardArray {
         y = clampY(y);
 
         if (triggerBackupBeforeNextModification) {
-            backupCurrentGameBoard();
+            pushSnapshot();
             triggerBackupBeforeNextModification = false;
         }
 
         gameBoardContent[x][y] = val;
-        gameBoardModified = true;
     }
 
     public boolean isFree(int x, int y) {
@@ -288,25 +291,22 @@ public class GameBoardArray {
     }
 
 
-    private void backupCurrentGameBoard() {
-        if (gameBoardModified) {
-            for (int y = 0; y < height; y++) {
-                for (int x = 0; x < width; x++) {
-                    gameBoardBackup[x][y] = gameBoardContent[x][y];
-                }
-            }
-        }
+    private void pushSnapshot() {
+        int[][] snapshot = new int[width][height];
+        for (int y = 0; y < height; y++)
+            for (int x = 0; x < width; x++)
+                snapshot[x][y] = gameBoardContent[x][y];
+        undoStack.push(snapshot);
+        if (undoStack.size() > MAX_UNDO_DEPTH)
+            undoStack.pollLast();
     }
 
     public void unrollBackup() {
-        if (gameBoardModified) {
-            gameBoardModified = false;
-            for (int y = 0; y < height; y++) {
-                for (int x = 0; x < width; x++) {
-                    gameBoardContent[x][y] = gameBoardBackup[x][y];
-                }
-            }
-        }
+        int[][] snapshot = undoStack.poll();
+        if (snapshot == null) return;
+        for (int y = 0; y < height; y++)
+            for (int x = 0; x < width; x++)
+                gameBoardContent[x][y] = snapshot[x][y];
     }
 
     public void backupGameBoardWithNextModification() {
