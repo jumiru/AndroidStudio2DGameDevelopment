@@ -313,6 +313,47 @@ public class GameBoardArray {
         triggerBackupBeforeNextModification = true;
     }
 
+    /** Returns a deep copy of the current board content, for persistence. */
+    public int[][] exportBoard() {
+        int[][] copy = new int[width][height];
+        for (int y = 0; y < height; y++)
+            for (int x = 0; x < width; x++)
+                copy[x][y] = gameBoardContent[x][y];
+        return copy;
+    }
+
+    /** Overwrites the board content from previously persisted data. */
+    public void importBoard(int[][] data) {
+        for (int y = 0; y < height; y++)
+            for (int x = 0; x < width; x++)
+                gameBoardContent[x][y] = data[x][y];
+    }
+
+    /** Returns deep copies of all undo snapshots, ordered from most recent to oldest. */
+    public List<int[][]> exportUndoStack() {
+        List<int[][]> result = new ArrayList<>();
+        for (int[][] snapshot : undoStack) {
+            int[][] copy = new int[width][height];
+            for (int y = 0; y < height; y++)
+                for (int x = 0; x < width; x++)
+                    copy[x][y] = snapshot[x][y];
+            result.add(copy);
+        }
+        return result;
+    }
+
+    /** Replaces the undo stack with previously persisted snapshots (most recent first). */
+    public void importUndoStack(List<int[][]> snapshots) {
+        undoStack.clear();
+        for (int[][] snapshot : snapshots) {
+            int[][] copy = new int[width][height];
+            for (int y = 0; y < height; y++)
+                for (int x = 0; x < width; x++)
+                    copy[x][y] = snapshot[x][y];
+            undoStack.addLast(copy);
+        }
+    }
+
     public void removeAllCellsBelowIndex(int minIndex) {
         for (int y = 0; y < height; y++) {
             for (int x = 0; x < width; x++) {

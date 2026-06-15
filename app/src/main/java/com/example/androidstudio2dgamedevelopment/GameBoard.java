@@ -13,6 +13,14 @@ import android.view.MotionEvent;
 
 import androidx.core.content.ContextCompat;
 
+import org.json.JSONArray;
+import org.json.JSONException;
+import org.json.JSONObject;
+
+import java.io.File;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.OutputStreamWriter;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
@@ -623,6 +631,12 @@ public class GameBoard {
         selfPlayIndicatorPaint.setFakeBoldText(true);
 
         gameInit();
+        if (loadGame()) {
+            levelText = "Level: " + level;
+            levelHintText = getNextLevelHintText();
+            updateBonusValues();
+            resetHudDisplayedValues();
+        }
 
     }
 
@@ -696,6 +710,123 @@ public class GameBoard {
         selfPlayQueue = null;
         selfPlayDelayCounter = SELF_PLAY_MOVE_DELAY;
         selfPlayTapAnimCounter = 0;
+    }
+
+    // -------------------------------------------------------------------------
+    // Save / restore of the running game (autosave)
+    // -------------------------------------------------------------------------
+
+    private static final String SAVE_FILE_NAME = "autosave.json";
+
+    /** Persists the current board, score and bonus state so it can be restored after a restart. */
+    public void saveGame() {
+        if (status == statusT.GAME_OVER) {
+            deleteSave();
+            return;
+        }
+        try {
+            JSONObject root = new JSONObject();
+            root.put("version", 1);
+            root.put("width", width);
+            root.put("height", height);
+            root.put("score", score);
+            root.put("level", level);
+            root.put("nextScoreForBonus", nextScoreForBonus);
+            root.put("undoCounter", undoCounter);
+            root.put("dissolveCounter", dissolveCounter);
+            root.put("swapCounter", swapCounter);
+            root.put("bombCounter", bombCounter);
+            root.put("shiftLineCounter", shiftLineCounter);
+            root.put("jumpCounter", jumpCounter);
+            root.put("delLineCounter", delLineCounter);
+            root.put("colorClearCounter", colorClearCounter);
+
+            root.put("board", boardToJson(gameBoardArray.exportBoard()));
+
+            JSONArray undoArr = new JSONArray();
+            for (int[][] snapshot : gameBoardArray.exportUndoStack()) {
+                undoArr.put(boardToJson(snapshot));
+            }
+            root.put("undoStack", undoArr);
+
+            try (OutputStreamWriter writer =
+                         new OutputStreamWriter(context.openFileOutput(SAVE_FILE_NAME, Context.MODE_PRIVATE))) {
+                writer.write(root.toString());
+            }
+        } catch (IOException | JSONException e) {
+            // autosave is best-effort
+        }
+    }
+
+    /** Loads a previously autosaved game. Returns true if state was restored. */
+    private boolean loadGame() {
+        File file = new File(context.getFilesDir(), SAVE_FILE_NAME);
+        if (!file.exists()) return false;
+
+        try (InputStreamReader reader = new InputStreamReader(context.openFileInput(SAVE_FILE_NAME))) {
+            StringBuilder sb = new StringBuilder();
+            char[] buf = new char[1024];
+            int n;
+            while ((n = reader.read(buf)) != -1) sb.append(buf, 0, n);
+            JSONObject root = new JSONObject(sb.toString());
+
+            if (root.getInt("width") != width || root.getInt("height") != height) {
+                return false;
+            }
+
+            gameBoardArray.importBoard(boardFromJson(root.getJSONArray("board")));
+
+            List<int[][]> undoSnapshots = new ArrayList<>();
+            JSONArray undoArr = root.getJSONArray("undoStack");
+            for (int i = 0; i < undoArr.length(); i++) {
+                undoSnapshots.add(boardFromJson(undoArr.getJSONArray(i)));
+            }
+            gameBoardArray.importUndoStack(undoSnapshots);
+
+            score = root.getLong("score");
+            level = root.getInt("level");
+            nextScoreForBonus = root.getLong("nextScoreForBonus");
+            undoCounter = root.getInt("undoCounter");
+            dissolveCounter = root.getInt("dissolveCounter");
+            swapCounter = root.getInt("swapCounter");
+            bombCounter = root.getInt("bombCounter");
+            shiftLineCounter = root.getInt("shiftLineCounter");
+            jumpCounter = root.getInt("jumpCounter");
+            delLineCounter = root.getInt("delLineCounter");
+            colorClearCounter = root.getInt("colorClearCounter");
+
+            return true;
+        } catch (IOException | JSONException e) {
+            return false;
+        }
+    }
+
+    /** Deletes the autosave, e.g. once a game has ended and there is nothing left to restore. */
+    private void deleteSave() {
+        context.deleteFile(SAVE_FILE_NAME);
+    }
+
+    private JSONArray boardToJson(int[][] board) throws JSONException {
+        JSONArray cols = new JSONArray();
+        for (int x = 0; x < width; x++) {
+            JSONArray col = new JSONArray();
+            for (int y = 0; y < height; y++) {
+                col.put(board[x][y]);
+            }
+            cols.put(col);
+        }
+        return cols;
+    }
+
+    private int[][] boardFromJson(JSONArray cols) throws JSONException {
+        int[][] board = new int[width][height];
+        for (int x = 0; x < width; x++) {
+            JSONArray col = cols.getJSONArray(x);
+            for (int y = 0; y < height; y++) {
+                board[x][y] = col.getInt(y);
+            }
+        }
+        return board;
     }
 
     private int getColor(int x, int y) {
@@ -1940,6 +2071,7 @@ public class GameBoard {
                 animateDropIn();
             } else {
                 status = statusT.SELECT_START_POSITION;
+                saveGame();
             }
         }
     }
@@ -1969,6 +2101,7 @@ public class GameBoard {
             if (freeCells == 0 && !(boardWideMergeScanActive && status == statusT.MERGE)) {
                 finalizeChainScoreIfNeeded();
                 status = statusT.GAME_OVER;
+                deleteSave();
             }
         } else {
             mergeAnimationStep--;

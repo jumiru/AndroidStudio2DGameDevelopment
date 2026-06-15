@@ -142,6 +142,7 @@ public class Game extends SurfaceView implements SurfaceHolder.Callback {
     }
 
     public void pause() {
+        gameBoard.saveGame();
         gameLoop.stopLoop();
     }
 
