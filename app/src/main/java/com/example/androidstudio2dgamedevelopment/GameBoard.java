@@ -806,6 +806,125 @@ public class GameBoard {
         context.deleteFile(SAVE_FILE_NAME);
     }
 
+    // -------------------------------------------------------------------------
+    // Named save slots (manual save / load)
+    // -------------------------------------------------------------------------
+
+    private static final String[] SAVE_SLOT_FILE_NAMES = {
+            "save_slot_0.json", "save_slot_1.json", "save_slot_2.json"
+    };
+    static final int NUM_SAVE_SLOTS = 3;
+
+    /** Returns true if (x, y) falls on the score HUD panel. */
+    public boolean isScoreHudAt(int x, int y) {
+        return statusScoreRect != null && statusScoreRect.contains(x, y);
+    }
+
+    /** Saves the current game state to the given slot (0-based index). */
+    public void saveToSlot(int slot) {
+        if (slot < 0 || slot >= NUM_SAVE_SLOTS || status == statusT.GAME_OVER) return;
+        try {
+            JSONObject root = new JSONObject();
+            root.put("version", 1);
+            root.put("width", width);
+            root.put("height", height);
+            root.put("score", score);
+            root.put("level", level);
+            root.put("nextScoreForBonus", nextScoreForBonus);
+            root.put("undoCounter", undoCounter);
+            root.put("dissolveCounter", dissolveCounter);
+            root.put("swapCounter", swapCounter);
+            root.put("bombCounter", bombCounter);
+            root.put("shiftLineCounter", shiftLineCounter);
+            root.put("jumpCounter", jumpCounter);
+            root.put("delLineCounter", delLineCounter);
+            root.put("colorClearCounter", colorClearCounter);
+            root.put("board", boardToJson(gameBoardArray.exportBoard()));
+            JSONArray undoArr = new JSONArray();
+            for (int[][] snapshot : gameBoardArray.exportUndoStack()) {
+                undoArr.put(boardToJson(snapshot));
+            }
+            root.put("undoStack", undoArr);
+            root.put("savedAt", System.currentTimeMillis());
+            try (OutputStreamWriter writer =
+                         new OutputStreamWriter(context.openFileOutput(SAVE_SLOT_FILE_NAMES[slot], Context.MODE_PRIVATE))) {
+                writer.write(root.toString());
+            }
+        } catch (IOException | JSONException e) {
+            // best-effort
+        }
+    }
+
+    /**
+     * Loads a previously saved slot. Resets transient game state first via gameInit(),
+     * then applies the persisted values. Returns true on success.
+     */
+    public boolean loadFromSlot(int slot) {
+        if (slot < 0 || slot >= NUM_SAVE_SLOTS) return false;
+        File file = new File(context.getFilesDir(), SAVE_SLOT_FILE_NAMES[slot]);
+        if (!file.exists()) return false;
+        try (InputStreamReader reader = new InputStreamReader(context.openFileInput(SAVE_SLOT_FILE_NAMES[slot]))) {
+            StringBuilder sb = new StringBuilder();
+            char[] buf = new char[1024];
+            int n;
+            while ((n = reader.read(buf)) != -1) sb.append(buf, 0, n);
+            JSONObject root = new JSONObject(sb.toString());
+            if (root.getInt("width") != width || root.getInt("height") != height) return false;
+
+            gameInit();
+
+            gameBoardArray.importBoard(boardFromJson(root.getJSONArray("board")));
+            List<int[][]> undoSnapshots = new ArrayList<>();
+            JSONArray undoArr = root.getJSONArray("undoStack");
+            for (int i = 0; i < undoArr.length(); i++) {
+                undoSnapshots.add(boardFromJson(undoArr.getJSONArray(i)));
+            }
+            gameBoardArray.importUndoStack(undoSnapshots);
+
+            score = root.getLong("score");
+            level = root.getInt("level");
+            nextScoreForBonus = root.getLong("nextScoreForBonus");
+            undoCounter = root.getInt("undoCounter");
+            dissolveCounter = root.getInt("dissolveCounter");
+            swapCounter = root.getInt("swapCounter");
+            bombCounter = root.getInt("bombCounter");
+            shiftLineCounter = root.getInt("shiftLineCounter");
+            jumpCounter = root.getInt("jumpCounter");
+            delLineCounter = root.getInt("delLineCounter");
+            colorClearCounter = root.getInt("colorClearCounter");
+
+            levelText = "Level: " + level;
+            levelHintText = getNextLevelHintText();
+            updateBonusValues();
+            resetHudDisplayedValues();
+            return true;
+        } catch (IOException | JSONException e) {
+            return false;
+        }
+    }
+
+    /**
+     * Returns a short summary for a slot (e.g. "Level 5 · 3250 Pkt."),
+     * or null if the slot is empty or unreadable.
+     */
+    public String getSlotSummary(int slot) {
+        if (slot < 0 || slot >= NUM_SAVE_SLOTS) return null;
+        File file = new File(context.getFilesDir(), SAVE_SLOT_FILE_NAMES[slot]);
+        if (!file.exists()) return null;
+        try (InputStreamReader reader = new InputStreamReader(context.openFileInput(SAVE_SLOT_FILE_NAMES[slot]))) {
+            StringBuilder sb = new StringBuilder();
+            char[] buf = new char[1024];
+            int n;
+            while ((n = reader.read(buf)) != -1) sb.append(buf, 0, n);
+            JSONObject root = new JSONObject(sb.toString());
+            long savedScore = root.getLong("score");
+            int savedLevel = root.getInt("level");
+            return "Level " + savedLevel + " · " + getScoreText(savedScore) + " Pkt.";
+        } catch (IOException | JSONException e) {
+            return null;
+        }
+    }
+
     private JSONArray boardToJson(int[][] board) throws JSONException {
         JSONArray cols = new JSONArray();
         for (int x = 0; x < width; x++) {

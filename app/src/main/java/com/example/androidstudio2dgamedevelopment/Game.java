@@ -62,6 +62,8 @@ public class Game extends SurfaceView implements SurfaceHolder.Callback {
                 if (idx >= 0) {
                     gameBoard.deselectAllBonuses();
                     showBonusInfoPopup(idx);
+                } else if (gameBoard.isScoreHudAt(bx, by)) {
+                    showSaveLoadDialog();
                 }
             }
         });
@@ -320,6 +322,116 @@ public class Game extends SurfaceView implements SurfaceHolder.Callback {
             dialog.show();
             Button okBtn = dialog.getButton(AlertDialog.BUTTON_POSITIVE);
             if (okBtn != null) okBtn.setTextColor(accent);
+        });
+    }
+
+    private void showSaveLoadDialog() {
+        Context ctx = getContext();
+        if (!(ctx instanceof Activity)) return;
+
+        // Read slot summaries before switching to UI thread (avoids holding game-thread lock)
+        String[] summaries = new String[GameBoard.NUM_SAVE_SLOTS];
+        for (int i = 0; i < GameBoard.NUM_SAVE_SLOTS; i++) {
+            summaries[i] = gameBoard.getSlotSummary(i);
+        }
+
+        ((Activity) ctx).runOnUiThread(() -> {
+            LinearLayout root = new LinearLayout(ctx);
+            root.setOrientation(LinearLayout.VERTICAL);
+            root.setPadding(dp(16), dp(16), dp(16), dp(8));
+
+            AlertDialog[] holder = {null};
+
+            // Per-slot views that may be updated in-place after a save
+            TextView[] summaryViews = new TextView[GameBoard.NUM_SAVE_SLOTS];
+            Button[]   loadBtns    = new Button[GameBoard.NUM_SAVE_SLOTS];
+
+            for (int i = 0; i < GameBoard.NUM_SAVE_SLOTS; i++) {
+                final int slot = i;
+                boolean hasData = summaries[i] != null;
+
+                // Slot card
+                LinearLayout card = new LinearLayout(ctx);
+                card.setOrientation(LinearLayout.VERTICAL);
+                GradientDrawable cardBg = new GradientDrawable();
+                cardBg.setColor(0xFF1A2A42);
+                cardBg.setCornerRadius(dp(10));
+                cardBg.setStroke(dp(1), 0xFF3A5A8A);
+                card.setBackground(cardBg);
+                card.setPadding(dp(12), dp(10), dp(12), dp(6));
+                LinearLayout.LayoutParams cardLP = new LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT);
+                cardLP.bottomMargin = dp(8);
+                card.setLayoutParams(cardLP);
+
+                // Slot label
+                TextView slotLabel = new TextView(ctx);
+                slotLabel.setText("Slot " + (i + 1));
+                slotLabel.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f);
+                slotLabel.setTypeface(Typeface.DEFAULT_BOLD);
+                slotLabel.setTextColor(0xFFF5BF4F);
+                card.addView(slotLabel);
+
+                // Summary text
+                TextView summaryView = new TextView(ctx);
+                summaryView.setText(hasData ? summaries[i] : "(leer)");
+                summaryView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f);
+                summaryView.setTextColor(hasData ? 0xFFCFD7EE : 0xFF606880);
+                LinearLayout.LayoutParams sumLP = new LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT);
+                sumLP.bottomMargin = dp(6);
+                summaryView.setLayoutParams(sumLP);
+                card.addView(summaryView);
+                summaryViews[i] = summaryView;
+
+                // Button row
+                LinearLayout btnRow = new LinearLayout(ctx);
+                btnRow.setOrientation(LinearLayout.HORIZONTAL);
+
+                Button saveBtn = new Button(ctx);
+                saveBtn.setText("Speichern");
+                saveBtn.setTextColor(0xFF63D88E);
+                saveBtn.setBackgroundColor(Color.TRANSPARENT);
+                saveBtn.setOnClickListener(v -> {
+                    gameBoard.saveToSlot(slot);
+                    String updated = gameBoard.getSlotSummary(slot);
+                    summaryViews[slot].setText(updated != null ? updated : "(leer)");
+                    summaryViews[slot].setTextColor(0xFFCFD7EE);
+                    loadBtns[slot].setEnabled(true);
+                    loadBtns[slot].setTextColor(0xFF63B8FF);
+                });
+                btnRow.addView(saveBtn);
+
+                Button loadBtn = new Button(ctx);
+                loadBtn.setText("Laden");
+                loadBtn.setTextColor(hasData ? 0xFF63B8FF : 0xFF404858);
+                loadBtn.setEnabled(hasData);
+                loadBtn.setBackgroundColor(Color.TRANSPARENT);
+                loadBtn.setOnClickListener(v -> {
+                    gameBoard.loadFromSlot(slot);
+                    if (holder[0] != null) holder[0].dismiss();
+                });
+                btnRow.addView(loadBtn);
+                loadBtns[i] = loadBtn;
+
+                card.addView(btnRow);
+                root.addView(card);
+            }
+
+            AlertDialog dialog = new AlertDialog.Builder(ctx)
+                    .setTitle("Spielstände")
+                    .setView(root)
+                    .setNegativeButton("Schließen", null)
+                    .create();
+            if (dialog.getWindow() != null) {
+                dialog.getWindow().setBackgroundDrawable(new ColorDrawable(0xFF16213A));
+            }
+            holder[0] = dialog;
+            dialog.show();
+            Button closeBtn = dialog.getButton(AlertDialog.BUTTON_NEGATIVE);
+            if (closeBtn != null) closeBtn.setTextColor(0xFFCFD7EE);
         });
     }
 
