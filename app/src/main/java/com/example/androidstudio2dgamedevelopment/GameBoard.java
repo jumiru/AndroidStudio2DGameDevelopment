@@ -120,15 +120,15 @@ public class GameBoard {
 
     private static final int MIN_COMBO_SIZE = 4;
     private static final long BASE_COMBO_SCORE = 4L;
-    private static final long BASE_LEVEL_SCORE = 25L;
-    private static final long BASE_BONUS_STEP = 75L;
-    private static final long BONUS_STEP_PER_LEVEL = 40L;
+    private static final long BASE_LEVEL_SCORE = 15L;
+    private static final long BASE_BONUS_STEP = 50L;
+    private static final long BONUS_STEP_PER_LEVEL = 18L;
     private static final long BUY_COST_UNDO = 200L;
     private static final long BUY_COST_SWAP = 400L;
-    private static final long BUY_COST_JUMP = 630L;
+    private static final long BUY_COST_JUMP = 600L;
     private static final long BUY_COST_DISSOLVE = 300L;
     private static final long BUY_COST_DEL_LINE = 800L;
-    private static final long BUY_COST_SHIFT_LINE = 565L;
+    private static final long BUY_COST_SHIFT_LINE = 400L;
     private static final long BUY_COST_COLOR_CLEAR = 1000L;
     private static final long BUY_COST_BOMB = 1500L;
     private static final int BOMB_ANIMATION_STEPS = 35;
@@ -230,6 +230,7 @@ public class GameBoard {
     private long autoHighScore;
     private boolean autoHighscoreExceeded;
     private long nextScoreForBonus;
+    private long spentOnBonuses;
     private long chainScoreProduct;
     private int chainLength;
     private boolean boardWideMergeScanActive;
@@ -367,7 +368,6 @@ public class GameBoard {
     private int selectionPulseCounter;
     private int selectionWidth;
     private int selectionPulseDirection;
-    private Rect originalSelectedRect;
 
     // store information while one cell is in motion
     private List<directionT> motionPath;
@@ -412,7 +412,6 @@ public class GameBoard {
     private int animateBonusCounter;
     private int bonusWin;
     private int bonusWin2 = -1;
-    private int bonusWin3 = -1;
     private Rect bonusWinRect;
     private Drawable bonusWinDrawable;
 
@@ -645,8 +644,10 @@ public class GameBoard {
         gameBoardArray.clear();
         gameBoardArray.initCells(4);
         status = statusT.SELECT_START_POSITION;
+        for (int x = 0; x < width; x++) java.util.Arrays.fill(rectArray[x], null);
         startMotion = true;
         score = 0;
+        spentOnBonuses = 0;
         chainScoreProduct = 0L;
         chainLength = 0;
 
@@ -698,7 +699,6 @@ public class GameBoard {
         levelPrunePaints = null;
         levelPruneTexts = null;
         bonusWin2 = -1;
-        bonusWin3 = -1;
 
         level = 1;
         levelText = "Level: " + level;
@@ -786,6 +786,7 @@ public class GameBoard {
             score = root.getLong("score");
             level = root.getInt("level");
             nextScoreForBonus = root.getLong("nextScoreForBonus");
+            spentOnBonuses = root.optLong("spentOnBonuses", 0);
             undoCounter = root.getInt("undoCounter");
             dissolveCounter = root.getInt("dissolveCounter");
             swapCounter = root.getInt("swapCounter");
@@ -820,6 +821,27 @@ public class GameBoard {
         return statusScoreRect != null && statusScoreRect.contains(x, y);
     }
 
+    /** Returns true if (x, y) falls on the best/auto-highscore HUD panel. */
+    public boolean isBestHudAt(int x, int y) {
+        return statusBestRect != null && statusBestRect.contains(x, y);
+    }
+
+    /** Returns true if (x, y) falls on the level HUD panel. */
+    public boolean isLevelHudAt(int x, int y) {
+        return statusLevelRect != null && statusLevelRect.contains(x, y);
+    }
+
+    public String getLevelHintText() { return getNextLevelHintText(); }
+
+    /** Resets the auto high score to zero and persists the change. */
+    public void resetAutoHighScore() {
+        autoHighScore = 0;
+        prefs.edit().putLong(PREF_KEY_AUTO_HIGHSCORE, 0).apply();
+        initHudSlot(HUD_SLOT_BEST, getScoreText(selfPlayActive ? autoHighScore : highScore));
+    }
+
+    public long getAutoHighScore() { return autoHighScore; }
+
     /** Saves the current game state to the given slot (0-based index). */
     public void saveToSlot(int slot) {
         if (slot < 0 || slot >= NUM_SAVE_SLOTS || status == statusT.GAME_OVER) return;
@@ -831,6 +853,7 @@ public class GameBoard {
             root.put("score", score);
             root.put("level", level);
             root.put("nextScoreForBonus", nextScoreForBonus);
+            root.put("spentOnBonuses", spentOnBonuses);
             root.put("undoCounter", undoCounter);
             root.put("dissolveCounter", dissolveCounter);
             root.put("swapCounter", swapCounter);
@@ -884,6 +907,7 @@ public class GameBoard {
             score = root.getLong("score");
             level = root.getInt("level");
             nextScoreForBonus = root.getLong("nextScoreForBonus");
+            spentOnBonuses = root.optLong("spentOnBonuses", 0);
             undoCounter = root.getInt("undoCounter");
             dissolveCounter = root.getInt("dissolveCounter");
             swapCounter = root.getInt("swapCounter");
@@ -3026,10 +3050,6 @@ public class GameBoard {
             bonusWin = bonusWin2;
             bonusWin2 = -1;
             startBonusAnimation();
-        } else if (bonusWin3 >= 0) {
-            bonusWin = bonusWin3;
-            bonusWin3 = -1;
-            startBonusAnimation();
         }
     }
 
@@ -3040,10 +3060,11 @@ public class GameBoard {
     }
 
     private String getNextLevelHintText() {
-        int nextLevel = level + 1;
-        long targetScore = getLevelThreshold(nextLevel);
-        long remainingScore = Math.max(0L, targetScore - score);
-        return "Next L" + nextLevel + " at " + getScoreText(targetScore) + " (" + getScoreText(remainingScore) + " left)";
+        long es = effectiveScore();
+        long toNextLevel = Math.max(0L, getLevelThreshold(level + 1) - es);
+        long toNextBonus = Math.max(0L, nextScoreForBonus - es);
+        return "Nächstes Level in " + getScoreText(toNextLevel) + " Punkten\n"
+             + "Nächster Bonus-Drop in " + getScoreText(toNextBonus) + " Punkten";
     }
 
     private void animateLevel() {
@@ -3223,14 +3244,15 @@ public class GameBoard {
         // naturally reduces the chance of receiving the same one again.
         bonusWin2 = getWeightedRandomBonusIndex();
         addBonusCount(bonusWin2, BONUS_AWARD_AMOUNT);
-        bonusWin3 = getWeightedRandomBonusIndex();
-        addBonusCount(bonusWin3, BONUS_AWARD_AMOUNT);
         startBonusAnimation();
     }
 
+    private long effectiveScore() { return score + spentOnBonuses; }
+
     private void applyProgressionAfterScoreChange() {
+        long es = effectiveScore();
         boolean leveledUp = false;
-        while (score >= getLevelThreshold(level + 1)) {
+        while (es >= getLevelThreshold(level + 1)) {
             level++;
             leveledUp = true;
         }
@@ -3250,9 +3272,10 @@ public class GameBoard {
             prefs.edit().putLong(PREF_KEY_AUTO_HIGHSCORE, autoHighScore).apply();
         }
 
-        while (score >= nextScoreForBonus) {
+        while (es >= nextScoreForBonus) {
             awardRandomBonus();
             nextScoreForBonus = safeAdd(nextScoreForBonus, getBonusStepForLevel(level));
+            es = effectiveScore();
         }
     }
 
@@ -3381,7 +3404,7 @@ public class GameBoard {
                     // start cell selection
                     startPositionX = indexX;
                     startPositionY = indexY;
-                    highlightCell(startPositionX, startPositionY);
+                    highlightCell();
                     status = statusT.SELECT_TARGET_POSITION;
                 }
             }
@@ -3395,7 +3418,7 @@ public class GameBoard {
                     // start cell selection
                     startPositionX = indexX;
                     startPositionY = indexY;
-                    highlightCell(startPositionX, startPositionY);
+                    highlightCell();
                     status = statusT.SELECT_TARGET_POSITION;
                 } else {
                     targetPositionX = indexX;
@@ -3694,6 +3717,7 @@ public class GameBoard {
             return false;
         }
         score -= buyCost;
+        spentOnBonuses += buyCost;
         return true;
     }
 
@@ -3735,13 +3759,11 @@ public class GameBoard {
     }
 
     private void resetCell(int x, int y) {
-        rectArray[x][y] = originalSelectedRect;
+        rectArray[x][y] = getRect(x, y);
         selectionPulseDirection = 0;
     }
 
-    private void highlightCell(int x, int y) {
-        originalSelectedRect = new Rect(rectArray[x][y]);
-
+    private void highlightCell() {
         selectionPulseDirection = -1;
         selectionPulseCounter = SELECTION_PULSE_TIME;
         selectionWidth = 0;

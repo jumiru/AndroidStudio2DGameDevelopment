@@ -22,6 +22,7 @@ import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.core.content.ContextCompat;
@@ -62,6 +63,10 @@ public class Game extends SurfaceView implements SurfaceHolder.Callback {
                 if (idx >= 0) {
                     gameBoard.deselectAllBonuses();
                     showBonusInfoPopup(idx);
+                } else if (gameBoard.isBestHudAt(bx, by)) {
+                    if (gameBoard.getAutoHighScore() > 0) showResetAutoHighScoreDialog();
+                } else if (gameBoard.isLevelHudAt(bx, by)) {
+                    showLevelHint();
                 } else if (gameBoard.isScoreHudAt(bx, by)) {
                     showSaveLoadDialog();
                 }
@@ -432,6 +437,36 @@ public class Game extends SurfaceView implements SurfaceHolder.Callback {
             dialog.show();
             Button closeBtn = dialog.getButton(AlertDialog.BUTTON_NEGATIVE);
             if (closeBtn != null) closeBtn.setTextColor(0xFFCFD7EE);
+        });
+    }
+
+    private void showLevelHint() {
+        Context ctx = getContext();
+        if (!(ctx instanceof Activity)) return;
+        String hint = gameBoard.getLevelHintText();
+        if (hint == null || hint.isEmpty()) return;
+        ((Activity) ctx).runOnUiThread(() ->
+                Toast.makeText(ctx, hint, Toast.LENGTH_LONG).show());
+    }
+
+    private void showResetAutoHighScoreDialog() {
+        Context ctx = getContext();
+        if (!(ctx instanceof Activity)) return;
+        ((Activity) ctx).runOnUiThread(() -> {
+            AlertDialog dialog = new AlertDialog.Builder(ctx)
+                    .setTitle("AUTO-Highscore zurücksetzen?")
+                    .setMessage("Der AUTO-Highscore wird auf 0 gesetzt.\nDer normale Highscore bleibt unberührt.")
+                    .setPositiveButton("Zurücksetzen", (d, w) -> gameBoard.resetAutoHighScore())
+                    .setNegativeButton("Abbrechen", null)
+                    .create();
+            if (dialog.getWindow() != null) {
+                dialog.getWindow().setBackgroundDrawable(new ColorDrawable(0xFF16213A));
+            }
+            dialog.show();
+            Button posBtn = dialog.getButton(AlertDialog.BUTTON_POSITIVE);
+            if (posBtn != null) posBtn.setTextColor(0xFFFF6B6B);
+            Button negBtn = dialog.getButton(AlertDialog.BUTTON_NEGATIVE);
+            if (negBtn != null) negBtn.setTextColor(0xFFCFD7EE);
         });
     }
 
