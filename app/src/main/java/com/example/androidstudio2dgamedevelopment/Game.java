@@ -339,11 +339,26 @@ public class Game extends SurfaceView implements SurfaceHolder.Callback {
         for (int i = 0; i < GameBoard.NUM_SAVE_SLOTS; i++) {
             summaries[i] = gameBoard.getSlotSummary(i);
         }
+        boolean cheatActive = gameBoard.isCheatActive();
 
         ((Activity) ctx).runOnUiThread(() -> {
             LinearLayout root = new LinearLayout(ctx);
             root.setOrientation(LinearLayout.VERTICAL);
             root.setPadding(dp(16), dp(16), dp(16), dp(8));
+
+            if (cheatActive) {
+                TextView cheatNotice = new TextView(ctx);
+                cheatNotice.setText("Debug-Code aktiv: Speichern ist deaktiviert, Laden weiterhin möglich.");
+                cheatNotice.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f);
+                cheatNotice.setTextColor(0xFFFF7F7F);
+                cheatNotice.setGravity(Gravity.CENTER);
+                LinearLayout.LayoutParams noticeLP = new LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT);
+                noticeLP.bottomMargin = dp(10);
+                cheatNotice.setLayoutParams(noticeLP);
+                root.addView(cheatNotice);
+            }
 
             AlertDialog[] holder = {null};
 
@@ -397,7 +412,8 @@ public class Game extends SurfaceView implements SurfaceHolder.Callback {
 
                 Button saveBtn = new Button(ctx);
                 saveBtn.setText("Speichern");
-                saveBtn.setTextColor(0xFF63D88E);
+                saveBtn.setTextColor(cheatActive ? 0xFF404858 : 0xFF63D88E);
+                saveBtn.setEnabled(!cheatActive);
                 saveBtn.setBackgroundColor(Color.TRANSPARENT);
                 saveBtn.setOnClickListener(v -> {
                     gameBoard.saveToSlot(slot);

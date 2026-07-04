@@ -12,6 +12,9 @@ public class GameBoardArray {
 
     private static final int MAX_PATH_LEN = 0xffffff;
 
+    /** Wildcard tile: matches any real value as part of a merge group. */
+    public static final int JOKER_VALUE = -2;
+
     private final int width;
     private final int height;
 
@@ -265,10 +268,41 @@ public class GameBoardArray {
     }
 
 
+    /**
+     * The real value a merge group anchored at (x, y) resolves to. Normally just the
+     * cell's own value; if the cell holds a joker, it borrows the value of an adjacent
+     * real (non-empty, non-joker) tile instead, since a lone joker has no value of its
+     * own. Returns -1 if the cell is a joker with no real neighbor to attach to.
+     */
+    public int effectiveMergeValue(int x, int y) {
+        int seedValue = gameBoardContent[x][y];
+        if (seedValue != JOKER_VALUE) return seedValue;
+        int[][] deltas = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
+        for (int[] d : deltas) {
+            int nx = x + d[0], ny = y + d[1];
+            if (nx < 0 || nx >= width || ny < 0 || ny >= height) continue;
+            int v = gameBoardContent[nx][ny];
+            if (v != -1 && v != JOKER_VALUE) return v;
+        }
+        return -1;
+    }
+
+    public boolean containsJoker() {
+        for (int y = 0; y < height; y++) {
+            for (int x = 0; x < width; x++) {
+                if (gameBoardContent[x][y] == JOKER_VALUE) return true;
+            }
+        }
+        return false;
+    }
+
     public Set<Coord> findMergeGroup(int x, int y) {
-        int mergeValue = gameBoardContent[x][y];
+        int mergeValue = effectiveMergeValue(x, y);
         Set<Coord> currMergeSet = new TreeSet<>();
         currMergeSet.add(new Coord(x, y));
+        if (mergeValue == -1) {
+            return currMergeSet; // isolated joker with nothing real to attach to yet
+        }
         findMergeGroupDFS(x, y, mergeValue, currMergeSet);
         return currMergeSet;
     }
@@ -283,7 +317,8 @@ public class GameBoardArray {
 
     private void tryMergeDirection(int nx, int ny, int mergeValue, Set<Coord> currMergeSet) {
         if (nx < 0 || nx >= width || ny < 0 || ny >= height) return;
-        if (gameBoardContent[nx][ny] != mergeValue) return;
+        int v = gameBoardContent[nx][ny];
+        if (v != mergeValue && v != JOKER_VALUE) return;
         Coord c = new Coord(nx, ny);
         if (currMergeSet.add(c)) { // add returns false if already present
             findMergeGroupDFS(nx, ny, mergeValue, currMergeSet);

@@ -1,0 +1,26 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="96dp"
+    android:height="96dp"
+    android:viewportWidth="96"
+    android:viewportHeight="96">
+    <!-- Gem body -->
+    <path android:fillColor="#FFE040FB"
+        android:pathData="M30,14 L66,14 L90,40 L48,90 L6,40 Z"/>
+    <!-- Table (top facet) highlight -->
+    <path android:fillColor="#55FFFFFF"
+        android:pathData="M38,22 L58,22 L78,40 L18,40 Z"/>
+    <!-- Left facet shading -->
+    <path android:fillColor="#33000000"
+        android:pathData="M6,40 L48,90 L30,14 Z"/>
+    <!-- Facet edges -->
+    <path android:strokeColor="#FFFFFFFF" android:strokeWidth="2.5"
+        android:fillColor="#00000000"
+        android:pathData="M6,40 L90,40 M30,14 L48,90 M66,14 L48,90"/>
+    <!-- Outline -->
+    <path android:strokeColor="#FFFFFFFF" android:strokeWidth="4"
+        android:fillColor="#00000000"
+        android:pathData="M30,14 L66,14 L90,40 L48,90 L6,40 Z"/>
+    <!-- Sparkle -->
+    <path android:fillColor="#FFFFFFFF"
+        android:pathData="M72,18 L74.5,24 L80,26 L74.5,28 L72,34 L69.5,28 L64,26 L69.5,24 Z"/>
+</vector>

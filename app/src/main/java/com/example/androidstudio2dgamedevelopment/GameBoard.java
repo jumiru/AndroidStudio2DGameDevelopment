@@ -119,6 +119,15 @@ public class GameBoard {
     private static final int HIGHSCORE_RESET_VERSION = 2;
 
     private static final int MIN_COMBO_SIZE = 4;
+    // A merge spawns a joker stone (wildcard tile) if its combo is this size or bigger.
+    // Only one joker stone may exist on the board at a time.
+    private static final int JOKER_STONE_MIN_COMBO_SIZE = 6;
+    private static final int JOKER_STONE_COLOR = 0xffe040fb;
+    // A chain of at least this many merges within one move ("double combo") creates a
+    // joker field at the last merge's position. Only one joker field may exist at a time.
+    private static final int JOKER_FIELD_MIN_CHAIN_LENGTH = 2;
+    private static final int JOKER_FIELD_BORDER_COLOR = 0xffffd700;
+    private static final int JOKER_FIELD_INNER_BORDER_COLOR = 0xfffff5cc;
     private static final long BASE_COMBO_SCORE = 4L;
     private static final long BASE_LEVEL_SCORE = 15L;
     private static final long BASE_BONUS_STEP = 50L;
@@ -131,7 +140,20 @@ public class GameBoard {
     private static final long BUY_COST_SHIFT_LINE = 400L;
     private static final long BUY_COST_COLOR_CLEAR = 1000L;
     private static final long BUY_COST_BOMB = 1500L;
+    private static final long BUY_COST_SHUFFLE = 2000L;
+    private static final long BUY_COST_TRIPLE_DRAW = 500L;
     private static final int BOMB_ANIMATION_STEPS = 35;
+    private static final int SHUFFLE_GATHER_DURATION = 16;
+    private static final int SHUFFLE_DRAWOUT_COUNT = 3;
+    private static final int SHUFFLE_DRAWOUT_DURATION = 16;
+    private static final int SHUFFLE_REDISTRIBUTE_DURATION = 20;
+    private static final float SHUFFLE_DRAWOUT_LIFT_RATIO = 1.1f;
+    private static final float SHUFFLE_PILE_JITTER_RATIO = 0.16f;
+    // The shuffle bonus arranges only a handful of ready-to-merge clusters of exactly
+    // MIN_COMBO_SIZE (never touching each other), and leaves the rest randomly placed.
+    // Keeping this low avoids chain reactions that blow through many levels at once.
+    private static final int SHUFFLE_MIN_CLUSTERS = 1;
+    private static final int SHUFFLE_MAX_CLUSTERS = 2;
     private static final int BONUS_AWARD_AMOUNT = 1;
     private static final double BONUS_COUNT_DAMPING = 0.5d;
     private static final int   HUD_FLIP_DURATION    = 18;
@@ -152,7 +174,9 @@ public class GameBoard {
             BUY_COST_SHIFT_LINE,
             BUY_COST_JUMP,
             BUY_COST_DEL_LINE,
-            BUY_COST_COLOR_CLEAR
+            BUY_COST_COLOR_CLEAR,
+            BUY_COST_SHUFFLE,
+            BUY_COST_TRIPLE_DRAW
     };
     private static final int[] BONUS_DRAWABLE_IDS = {
             R.drawable.undo_circle_icon,
@@ -162,7 +186,9 @@ public class GameBoard {
             R.drawable.shift_line_icon,
             R.drawable.jump_icon,
             R.drawable.delete_line_icon,
-            R.drawable.color_clear_icon
+            R.drawable.color_clear_icon,
+            R.drawable.shuffle_icon,
+            R.drawable.triple_draw_icon
     };
     private static final int[] BONUS_ACCENT_COLORS = {
             0xff66d8ff, // undo
@@ -172,11 +198,14 @@ public class GameBoard {
             0xffbd8bff, // shift_line
             0xff9be27c, // jump
             0xffff7f7f, // del_line
-            0xffffb0df  // color_clear
+            0xffffb0df, // color_clear
+            0xffe8c94f, // shuffle
+            0xff7de8c8  // triple_draw
     };
     static final String[] BONUS_NAMES = {
             "Rückgängig", "Auflösen", "Tauschen", "Bombe",
-            "Reihe verschieben", "Sprung", "Reihe löschen", "Farbe löschen"
+            "Reihe verschieben", "Sprung", "Reihe löschen", "Farbe löschen",
+            "Mischen", "Freizug ×3"
     };
     static final String[] BONUS_DESCRIPTIONS = {
             "Macht den letzten Zug rückgängig.",
@@ -186,7 +215,9 @@ public class GameBoard {
             "Verschiebt eine Reihe oder Spalte um ein Feld. Nach dem Antippen in die gewünschte Richtung wischen.",
             "Bewegt einen Block direkt an eine beliebige Zielposition.",
             "Löscht eine vollständige Reihe oder Spalte. Nach dem Antippen in die gewünschte Richtung wischen.",
-            "Entfernt alle Blöcke mit derselben Zahl vom Spielfeld."
+            "Entfernt alle Blöcke mit derselben Zahl vom Spielfeld.",
+            "Verteilt alle Steine zufällig neu auf dem Spielfeld.",
+            "Die nächsten 3 Züge bringen keine neuen Steine."
     };
 
     public enum directionT {
@@ -234,6 +265,9 @@ public class GameBoard {
     private long chainScoreProduct;
     private int chainLength;
     private boolean boardWideMergeScanActive;
+    // While true, merges found during the current board-wide scan chain don't spawn a
+    // joker stone or trigger the joker field - set for shuffle-triggered chains only.
+    private boolean suppressJokerRewardsThisChain;
 
     private final Paint textPaint;
     private final Paint scoreAndLevelPaint;
@@ -327,6 +361,24 @@ public class GameBoard {
     private int bombCenterPixelX;
     private int bombCenterPixelY;
     private Rect bombAnimDrawRect;
+    // shuffle bonus animation: gather stones to a center pile, peek 3 of them, redistribute
+    private boolean shuffleAnimationRunning;
+    private int shuffleAnimPhase; // 0 = gather to pile, 1 = draw-out flourish, 2 = redistribute
+    private int shuffleAnimCounter;
+    private int shuffleStoneCount;
+    private int shuffleDrawOutIteration;
+    private int[] shuffleDrawOutIndices;
+    private Rect[] shufflePileRects;
+    private Rect[] shuffleFinalRects;
+    private Rect[] shuffleCurrentRects;
+    private float[] shuffleIncrementX;
+    private float[] shuffleIncrementY;
+    private Paint[] shufflePaints;
+    private String[] shuffleTexts;
+    private int[] shuffleFinalX;
+    private int[] shuffleFinalY;
+    private int[] shuffleValues;
+    private Rect shuffleDrawRect;
     private final Paint bombShockwavePaint;
     private final Paint shiftSelectionPulsePaint;
     private int touchDownX;
@@ -423,6 +475,8 @@ public class GameBoard {
     private Rect shiftLineRect;
     private Rect colorClearRect;
     private Rect bombRect;
+    private Rect shuffleRect;
+    private Rect tripleDrawRect;
     private Rect undoSlotRect;
     private Rect swapSlotRect;
     private Rect jumpSlotRect;
@@ -431,6 +485,8 @@ public class GameBoard {
     private Rect shiftLineSlotRect;
     private Rect colorClearSlotRect;
     private Rect bombSlotRect;
+    private Rect shuffleSlotRect;
+    private Rect tripleDrawSlotRect;
     private Rect undoBuyRect;
     private Rect swapBuyRect;
     private Rect jumpBuyRect;
@@ -439,7 +495,11 @@ public class GameBoard {
     private Rect shiftLineBuyRect;
     private Rect colorClearBuyRect;
     private Rect bombBuyRect;
+    private Rect shuffleBuyRect;
+    private Rect tripleDrawBuyRect;
     private Drawable undo;
+    private Drawable gameOverUndoIcon;
+    private Rect gameOverUndoRect;
     private Drawable jump;
     private Drawable swap;
     private Drawable dissolve;
@@ -447,6 +507,8 @@ public class GameBoard {
     private Drawable shiftLine;
     private Drawable colorClearDrawable;
     private Drawable bombIcon;
+    private Drawable shuffleDrawable;
+    private Drawable tripleDrawDrawable;
     private int undoCounter;
     private int swapCounter;
     private int jumpCounter;
@@ -455,6 +517,9 @@ public class GameBoard {
     private int shiftLineCounter;
     private int colorClearCounter;
     private int bombCounter;
+    private int shuffleCounter;
+    private int tripleDrawCounter;
+    private int tripleDrawMovesLeft;
 
     private boolean undoSelected;
     private boolean swapSelected;
@@ -473,6 +538,8 @@ public class GameBoard {
     private String shiftLineText;
     private String colorClearText;
     private String bombText;
+    private String shuffleText;
+    private String tripleDrawText;
     private Paint buyPaint;
     private Paint buyBoxPaint;
     private Paint bonusSlotCardPaint;
@@ -499,6 +566,16 @@ public class GameBoard {
     private final List<directionT> inverseMotionPath;
     private int swap2ndMergePositionX;
     private int swap2ndMergePositionY;
+
+    // joker field: a single static board position that awards a bonus when a combo
+    // lands on it, then relocates elsewhere
+    private int jokerFieldX = -1;
+    private int jokerFieldY = -1;
+    private Paint jokerFieldBorderPaint;
+    private Paint jokerFieldInnerBorderPaint;
+    private RectF jokerFieldRectF;
+    private Paint jokerStoneBgPaint;
+    private Drawable jokerDiamondDrawable;
 
     // game over
     private int gameOverAnimationCounter;
@@ -664,6 +741,9 @@ public class GameBoard {
         shiftLineCounter = 0;
         colorClearCounter = 0;
         bombCounter = 0;
+        shuffleCounter = 0;
+        tripleDrawCounter = 0;
+        tripleDrawMovesLeft = 0;
         addBonusCount(getWeightedRandomBonusIndex(), 1);
         addBonusCount(getWeightedRandomBonusIndex(), 1);
         addBonusCount(getWeightedRandomBonusIndex(), 1);
@@ -681,6 +761,9 @@ public class GameBoard {
         shiftSelectionPulseTick = 0;
         touchDownX = 0;
         touchDownY = 0;
+        // No joker field until the player earns one with a double (or bigger) combo.
+        jokerFieldX = -1;
+        jokerFieldY = -1;
         lineDissolveAnimationRunning = false;
         lineDissolveRects = null;
         lineDissolvePaints = null;
@@ -720,6 +803,9 @@ public class GameBoard {
 
     /** Persists the current board, score and bonus state so it can be restored after a restart. */
     public void saveGame() {
+        if (highscoreLockedByCheat) {
+            return;
+        }
         if (status == statusT.GAME_OVER) {
             deleteSave();
             return;
@@ -740,6 +826,11 @@ public class GameBoard {
             root.put("jumpCounter", jumpCounter);
             root.put("delLineCounter", delLineCounter);
             root.put("colorClearCounter", colorClearCounter);
+            root.put("shuffleCounter", shuffleCounter);
+            root.put("tripleDrawCounter", tripleDrawCounter);
+            root.put("tripleDrawMovesLeft", tripleDrawMovesLeft);
+            root.put("jokerFieldX", jokerFieldX);
+            root.put("jokerFieldY", jokerFieldY);
 
             root.put("board", boardToJson(gameBoardArray.exportBoard()));
 
@@ -795,6 +886,15 @@ public class GameBoard {
             jumpCounter = root.getInt("jumpCounter");
             delLineCounter = root.getInt("delLineCounter");
             colorClearCounter = root.getInt("colorClearCounter");
+            shuffleCounter = root.optInt("shuffleCounter", 0);
+            tripleDrawCounter = root.optInt("tripleDrawCounter", 0);
+            tripleDrawMovesLeft = root.optInt("tripleDrawMovesLeft", 0);
+            jokerFieldX = root.optInt("jokerFieldX", -1);
+            jokerFieldY = root.optInt("jokerFieldY", -1);
+            if (jokerFieldX < 0 || jokerFieldY < 0 || jokerFieldX >= width || jokerFieldY >= height) {
+                jokerFieldX = -1;
+                jokerFieldY = -1;
+            }
 
             return true;
         } catch (IOException | JSONException e) {
@@ -842,9 +942,14 @@ public class GameBoard {
 
     public long getAutoHighScore() { return autoHighScore; }
 
+    /** Returns true once a hidden cheat/debug code has been used this session; saving is disabled after that. */
+    public boolean isCheatActive() {
+        return highscoreLockedByCheat;
+    }
+
     /** Saves the current game state to the given slot (0-based index). */
     public void saveToSlot(int slot) {
-        if (slot < 0 || slot >= NUM_SAVE_SLOTS || status == statusT.GAME_OVER) return;
+        if (slot < 0 || slot >= NUM_SAVE_SLOTS || status == statusT.GAME_OVER || highscoreLockedByCheat) return;
         try {
             JSONObject root = new JSONObject();
             root.put("version", 1);
@@ -862,6 +967,11 @@ public class GameBoard {
             root.put("jumpCounter", jumpCounter);
             root.put("delLineCounter", delLineCounter);
             root.put("colorClearCounter", colorClearCounter);
+            root.put("shuffleCounter", shuffleCounter);
+            root.put("tripleDrawCounter", tripleDrawCounter);
+            root.put("tripleDrawMovesLeft", tripleDrawMovesLeft);
+            root.put("jokerFieldX", jokerFieldX);
+            root.put("jokerFieldY", jokerFieldY);
             root.put("board", boardToJson(gameBoardArray.exportBoard()));
             JSONArray undoArr = new JSONArray();
             for (int[][] snapshot : gameBoardArray.exportUndoStack()) {
@@ -916,6 +1026,15 @@ public class GameBoard {
             jumpCounter = root.getInt("jumpCounter");
             delLineCounter = root.getInt("delLineCounter");
             colorClearCounter = root.getInt("colorClearCounter");
+            shuffleCounter = root.optInt("shuffleCounter", 0);
+            tripleDrawCounter = root.optInt("tripleDrawCounter", 0);
+            tripleDrawMovesLeft = root.optInt("tripleDrawMovesLeft", 0);
+            jokerFieldX = root.optInt("jokerFieldX", -1);
+            jokerFieldY = root.optInt("jokerFieldY", -1);
+            if (jokerFieldX < 0 || jokerFieldY < 0 || jokerFieldX >= width || jokerFieldY >= height) {
+                jokerFieldX = -1;
+                jokerFieldY = -1;
+            }
 
             levelText = "Level: " + level;
             levelHintText = getNextLevelHintText();
@@ -973,9 +1092,15 @@ public class GameBoard {
     }
 
     private int getColor(int x, int y) {
-        int val = gameBoardArray.get(x, y);
+        return getColorForValue(gameBoardArray.get(x, y));
+    }
+
+    private int getColorForValue(int val) {
         if (val == -1) {
             return getColor(0x90, 0x90, 0x90);
+        }
+        if (val == GameBoardArray.JOKER_VALUE) {
+            return JOKER_STONE_COLOR;
         }
         if (val < 40) {
             return colorArray[val];
@@ -1031,6 +1156,9 @@ public class GameBoard {
         }
         if (bombAnimationRunning) {
             drawBombAnimation(canvas);
+        }
+        if (shuffleAnimationRunning) {
+            drawShuffleAnimation(canvas);
         }
         if (levelPruneAnimationRunning) {
             drawLevelPruneAnimation(canvas);
@@ -1658,11 +1786,13 @@ public class GameBoard {
         drawBonusSlot(canvas, undo, undoRect, undoText, undoBuyRect, BUY_COST_UNDO, BONUS_ACCENT_COLORS[0], undoSelected, bonusSlotWidth);
         drawBonusSlot(canvas, dissolve, dissolveRect, dissolveText, dissolveBuyRect, BUY_COST_DISSOLVE, BONUS_ACCENT_COLORS[1], dissolveSelected, bonusSlotWidth);
         drawBonusSlot(canvas, swap, swapRect, swapText, swapBuyRect, BUY_COST_SWAP, BONUS_ACCENT_COLORS[2], swapSelected, bonusSlotWidth);
-        drawBonusSlot(canvas, bombIcon, bombRect, bombText, bombBuyRect, BUY_COST_BOMB, BONUS_ACCENT_COLORS[3], bombSelected, bonusSlotWidth);
         drawBonusSlot(canvas, shiftLine, shiftLineRect, shiftLineText, shiftLineBuyRect, BUY_COST_SHIFT_LINE, BONUS_ACCENT_COLORS[4], shiftLineSelected, bonusSlotWidth);
+        drawBonusSlot(canvas, tripleDrawDrawable, tripleDrawRect, tripleDrawText, tripleDrawBuyRect, BUY_COST_TRIPLE_DRAW, BONUS_ACCENT_COLORS[9], tripleDrawMovesLeft > 0, bonusSlotWidth);
         drawBonusSlot(canvas, jump, jumpRect, jumpText, jumpBuyRect, BUY_COST_JUMP, BONUS_ACCENT_COLORS[5], jumpSelected, bonusSlotWidth);
         drawBonusSlot(canvas, delLine, delLineRect, delLineText, delLineBuyRect, BUY_COST_DEL_LINE, BONUS_ACCENT_COLORS[6], delLineSelected, bonusSlotWidth);
         drawBonusSlot(canvas, colorClearDrawable, colorClearRect, colorClearText, colorClearBuyRect, BUY_COST_COLOR_CLEAR, BONUS_ACCENT_COLORS[7], colorClearSelected, bonusSlotWidth);
+        drawBonusSlot(canvas, bombIcon, bombRect, bombText, bombBuyRect, BUY_COST_BOMB, BONUS_ACCENT_COLORS[3], bombSelected, bonusSlotWidth);
+        drawBonusSlot(canvas, shuffleDrawable, shuffleRect, shuffleText, shuffleBuyRect, BUY_COST_SHUFFLE, BONUS_ACCENT_COLORS[8], false, bonusSlotWidth);
     }
 
     private void drawBonusSlot(Canvas canvas, Drawable icon, Rect iconRect, String countText, Rect buyRect,
@@ -1737,6 +1867,19 @@ public class GameBoard {
             }
             canvas.drawRect(gameOverRect, gameOverPaint);
             canvas.drawText(GAME_OVER_TEXT, gameOverAnimationCounter, getTextPosY(gameOverRect, gameOverTextPaint), gameOverTextPaint);
+
+            if (gameOverAnimationPhase == 2 && undoCounter > 0 && gameOverUndoIcon != null) {
+                int iconSize = (int) (Math.min(canvasWidth, gameOverRect.height()) * 0.26f);
+                int centerX = canvasWidth / 2;
+                int centerY = gameOverRect.top + (int) (gameOverRect.height() * 0.68f);
+                if (gameOverUndoRect == null) gameOverUndoRect = new Rect();
+                gameOverUndoRect.set(centerX - iconSize / 2, centerY - iconSize / 2,
+                        centerX + iconSize / 2, centerY + iconSize / 2);
+                gameOverUndoIcon.setBounds(gameOverUndoRect);
+                gameOverUndoIcon.draw(canvas);
+            } else if (gameOverUndoRect != null) {
+                gameOverUndoRect.setEmpty();
+            }
         }
     }
 
@@ -1750,9 +1893,17 @@ public class GameBoard {
 
     private void drawMotionRect(Canvas canvas) {
         if (status == statusT.MOTION && motionRect != null) {
-            drawCell(canvas, motionRect, motionPaint, motionText);
+            if (gameBoardArrayValueAfterMotion == GameBoardArray.JOKER_VALUE) {
+                drawJokerStone(canvas, motionRect);
+            } else {
+                drawCell(canvas, motionRect, motionPaint, motionText);
+            }
             if (swapSelected) {
-                drawCell(canvas, swapMotionRect, swapMotionPaint, swapMotionText);
+                if (swapPartnerValueAfterMotion == GameBoardArray.JOKER_VALUE) {
+                    drawJokerStone(canvas, swapMotionRect);
+                } else {
+                    drawCell(canvas, swapMotionRect, swapMotionPaint, swapMotionText);
+                }
             }
         }
     }
@@ -1766,9 +1917,54 @@ public class GameBoard {
                 if (paintArray[x][y] == null) {
                     paintArray[x][y] = new Paint();
                 }
-                paintArray[x][y].setColor(getColor(x, y));
-                drawCell(canvas, rectArray[x][y], paintArray[x][y], getText(x, y));
+
+                if (gameBoardArray.get(x, y) == GameBoardArray.JOKER_VALUE) {
+                    drawJokerStone(canvas, rectArray[x][y]);
+                } else {
+                    paintArray[x][y].setColor(getColor(x, y));
+                    drawCell(canvas, rectArray[x][y], paintArray[x][y], getText(x, y));
+                }
+
+                // Drawn last so the frame sits on top of whatever tile occupies the cell.
+                if (x == jokerFieldX && y == jokerFieldY) {
+                    drawJokerFieldBorder(canvas, rectArray[x][y]);
+                }
             }
+        }
+    }
+
+    private void drawJokerFieldBorder(Canvas canvas, Rect rect) {
+        if (jokerFieldRectF == null) {
+            jokerFieldRectF = new RectF();
+            jokerFieldBorderPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+            jokerFieldBorderPaint.setStyle(Paint.Style.STROKE);
+            jokerFieldBorderPaint.setStrokeWidth(6.0f);
+            jokerFieldBorderPaint.setColor(JOKER_FIELD_BORDER_COLOR);
+
+            jokerFieldInnerBorderPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+            jokerFieldInnerBorderPaint.setStyle(Paint.Style.STROKE);
+            jokerFieldInnerBorderPaint.setStrokeWidth(2.0f);
+            jokerFieldInnerBorderPaint.setColor(JOKER_FIELD_INNER_BORDER_COLOR);
+        }
+        jokerFieldRectF.set(rect.left + 4.0f, rect.top + 4.0f, rect.right - 4.0f, rect.bottom - 4.0f);
+        canvas.drawRoundRect(jokerFieldRectF, 10.0f, 10.0f, jokerFieldBorderPaint);
+        jokerFieldRectF.inset(4.0f, 4.0f);
+        canvas.drawRoundRect(jokerFieldRectF, 8.0f, 8.0f, jokerFieldInnerBorderPaint);
+    }
+
+    private void drawJokerStone(Canvas canvas, Rect rect) {
+        if (jokerStoneBgPaint == null) {
+            jokerStoneBgPaint = new Paint();
+            jokerStoneBgPaint.setColor(getColorForValue(-1));
+
+            jokerDiamondDrawable = ContextCompat.getDrawable(context, R.drawable.diamond_icon);
+        }
+        canvas.drawRect(rect, jokerStoneBgPaint);
+        if (jokerDiamondDrawable != null) {
+            int margin = (int) (Math.min(rect.width(), rect.height()) * 0.12f);
+            jokerDiamondDrawable.setBounds(rect.left + margin, rect.top + margin,
+                    rect.right - margin, rect.bottom - margin);
+            jokerDiamondDrawable.draw(canvas);
         }
     }
 
@@ -1789,7 +1985,7 @@ public class GameBoard {
         int statusTop = (int) (height * cellHeight);
         int gridTop = statusTop + 3 * RECT_BORDER;
         int rowHeight = (STATUS_FIELD_HEIGHT - 16 * RECT_BORDER) / 2;
-        bonusSlotWidth = canvasWidth / 4;
+        bonusSlotWidth = canvasWidth / 5;
         bonusSlotHeight = rowHeight;
         buyButtonHeight = RECT_BORDER + BONUS_TEXT_SIZE + 4;
         int maxIconSize = Math.min(bonusSlotWidth - 6 * RECT_BORDER, bonusSlotHeight - buyButtonHeight - 6 * RECT_BORDER - BONUS_TEXT_SIZE);
@@ -1797,35 +1993,46 @@ public class GameBoard {
         int maxIconSizeLarge = bonusSlotHeight - buyButtonHeight - 4 * RECT_BORDER - BONUS_TEXT_SIZE;
         bonusIconWidthLarge = Math.max(bonusIconWidth, maxIconSizeLarge);
 
+        // Bonus grid positions are ordered by ascending cost, left-to-right then top-to-bottom:
+        // row 0: undo(200) dissolve(300) swap(400) shiftLine(400) tripleDraw(500)
+        // row 1: jump(600) delLine(800) colorClear(1000) bomb(1500) shuffle(2000)
         undoRect      = createBonusIconRect(0, 0, gridTop, bonusSlotWidth, bonusIconWidth);
-        swapRect      = createBonusIconRect(0, 1, gridTop, bonusSlotWidth, bonusIconWidth);
-        jumpRect      = createBonusIconRect(0, 2, gridTop, bonusSlotWidth, bonusIconWidth);
-        dissolveRect  = createBonusIconRect(0, 3, gridTop, bonusSlotWidth, bonusIconWidthLarge);
-        delLineRect   = createBonusIconRect(1, 0, gridTop, bonusSlotWidth, bonusIconWidthLarge);
-        shiftLineRect = createBonusIconRect(1, 1, gridTop, bonusSlotWidth, bonusIconWidthLarge);
+        dissolveRect  = createBonusIconRect(0, 1, gridTop, bonusSlotWidth, bonusIconWidthLarge);
+        swapRect      = createBonusIconRect(0, 2, gridTop, bonusSlotWidth, bonusIconWidth);
+        shiftLineRect = createBonusIconRect(0, 3, gridTop, bonusSlotWidth, bonusIconWidthLarge);
+        tripleDrawRect= createBonusIconRect(0, 4, gridTop, bonusSlotWidth, bonusIconWidthLarge);
+        jumpRect      = createBonusIconRect(1, 0, gridTop, bonusSlotWidth, bonusIconWidth);
+        delLineRect   = createBonusIconRect(1, 1, gridTop, bonusSlotWidth, bonusIconWidthLarge);
         colorClearRect= createBonusIconRect(1, 2, gridTop, bonusSlotWidth, bonusIconWidthLarge);
         bombRect      = createBonusIconRect(1, 3, gridTop, bonusSlotWidth, bonusIconWidthLarge);
+        shuffleRect   = createBonusIconRect(1, 4, gridTop, bonusSlotWidth, bonusIconWidthLarge);
 
         undoSlotRect = createBonusSlotRect(0, 0, gridTop, bonusSlotWidth);
-        swapSlotRect = createBonusSlotRect(0, 1, gridTop, bonusSlotWidth);
-        jumpSlotRect = createBonusSlotRect(0, 2, gridTop, bonusSlotWidth);
-        dissolveSlotRect = createBonusSlotRect(0, 3, gridTop, bonusSlotWidth);
-        delLineSlotRect = createBonusSlotRect(1, 0, gridTop, bonusSlotWidth);
-        shiftLineSlotRect = createBonusSlotRect(1, 1, gridTop, bonusSlotWidth);
+        dissolveSlotRect = createBonusSlotRect(0, 1, gridTop, bonusSlotWidth);
+        swapSlotRect = createBonusSlotRect(0, 2, gridTop, bonusSlotWidth);
+        shiftLineSlotRect = createBonusSlotRect(0, 3, gridTop, bonusSlotWidth);
+        tripleDrawSlotRect = createBonusSlotRect(0, 4, gridTop, bonusSlotWidth);
+        jumpSlotRect = createBonusSlotRect(1, 0, gridTop, bonusSlotWidth);
+        delLineSlotRect = createBonusSlotRect(1, 1, gridTop, bonusSlotWidth);
         colorClearSlotRect = createBonusSlotRect(1, 2, gridTop, bonusSlotWidth);
         bombSlotRect    = createBonusSlotRect(1, 3, gridTop, bonusSlotWidth);
+        shuffleSlotRect  = createBonusSlotRect(1, 4, gridTop, bonusSlotWidth);
 
         undoBuyRect = createBuyRectForSlot(0, 0, gridTop, bonusSlotWidth);
-        swapBuyRect = createBuyRectForSlot(0, 1, gridTop, bonusSlotWidth);
-        jumpBuyRect = createBuyRectForSlot(0, 2, gridTop, bonusSlotWidth);
-        dissolveBuyRect = createBuyRectForSlot(0, 3, gridTop, bonusSlotWidth);
-        delLineBuyRect = createBuyRectForSlot(1, 0, gridTop, bonusSlotWidth);
-        shiftLineBuyRect = createBuyRectForSlot(1, 1, gridTop, bonusSlotWidth);
+        dissolveBuyRect = createBuyRectForSlot(0, 1, gridTop, bonusSlotWidth);
+        swapBuyRect = createBuyRectForSlot(0, 2, gridTop, bonusSlotWidth);
+        shiftLineBuyRect = createBuyRectForSlot(0, 3, gridTop, bonusSlotWidth);
+        tripleDrawBuyRect = createBuyRectForSlot(0, 4, gridTop, bonusSlotWidth);
+        jumpBuyRect = createBuyRectForSlot(1, 0, gridTop, bonusSlotWidth);
+        delLineBuyRect = createBuyRectForSlot(1, 1, gridTop, bonusSlotWidth);
         colorClearBuyRect = createBuyRectForSlot(1, 2, gridTop, bonusSlotWidth);
         bombBuyRect    = createBuyRectForSlot(1, 3, gridTop, bonusSlotWidth);
+        shuffleBuyRect  = createBuyRectForSlot(1, 4, gridTop, bonusSlotWidth);
 
         undo = ContextCompat.getDrawable(context, R.drawable.undo_circle_icon);
         if (undo != null) undo.setBounds(undoRect);
+
+        gameOverUndoIcon = ContextCompat.getDrawable(context, R.drawable.undo_circle_icon);
 
         swap = ContextCompat.getDrawable(context, R.drawable.swap_icon);
         if (swap != null) swap.setBounds(swapRect);
@@ -1835,6 +2042,9 @@ public class GameBoard {
 
         dissolve = ContextCompat.getDrawable(context, R.drawable.delete_block_icon);
         if (dissolve != null) dissolve.setBounds(dissolveRect);
+
+        shuffleDrawable = ContextCompat.getDrawable(context, R.drawable.shuffle_icon);
+        if (shuffleDrawable != null) shuffleDrawable.setBounds(shuffleRect);
 
         delLine = ContextCompat.getDrawable(context, R.drawable.delete_line_icon);
         if (delLine != null) delLine.setBounds(delLineRect);
@@ -1847,6 +2057,9 @@ public class GameBoard {
 
         bombIcon = ContextCompat.getDrawable(context, R.drawable.bomb_icon);
         if (bombIcon != null) bombIcon.setBounds(bombRect);
+
+        tripleDrawDrawable = ContextCompat.getDrawable(context, R.drawable.triple_draw_icon);
+        if (tripleDrawDrawable != null) tripleDrawDrawable.setBounds(tripleDrawRect);
 
         bonusPaint = new Paint();
         bonusPaint.setColor(TEXT_COLOR_WHITE);
@@ -1972,6 +2185,10 @@ public class GameBoard {
         }
         if (bombAnimationRunning) {
             animateBombBonus();
+            return;
+        }
+        if (shuffleAnimationRunning) {
+            animateShuffleBonus();
             return;
         }
         if (levelPruneAnimationRunning) {
@@ -2221,7 +2438,9 @@ public class GameBoard {
 
     private void handleCellMerging() {
         if (mergeAnimationStep == 0) {
-            gameBoardArrayValueAfterMotion = gameBoardArray.get(targetPositionX, targetPositionY);
+            // Use the resolved (joker-aware) value: if the target cell itself is a
+            // joker, this is the real value it borrowed from an adjacent tile.
+            gameBoardArrayValueAfterMotion = gameBoardArray.effectiveMergeValue(targetPositionX, targetPositionY);
             mergeGroup = merge(targetPositionX, targetPositionY);
             if (mergeGroup.size() >= MIN_COMBO_SIZE) {
                 startMergeAnimation();
@@ -2236,6 +2455,13 @@ public class GameBoard {
                         return;
                     }
                     boardWideMergeScanActive = false;
+                    // A chain of 2+ merges this move ("double combo") creates a joker
+                    // field at the last merge's position, replacing any existing one.
+                    if (!suppressJokerRewardsThisChain && chainLength >= JOKER_FIELD_MIN_CHAIN_LENGTH) {
+                        jokerFieldX = targetPositionX;
+                        jokerFieldY = targetPositionY;
+                    }
+                    suppressJokerRewardsThisChain = false;
                     finalizeChainScoreIfNeeded();
                     status = statusT.DROP_IN_NEW_CELLS;
                 }
@@ -2282,6 +2508,10 @@ public class GameBoard {
                     gameBoardArray.set(xAfterSwapMotion, yAfterSwapMotion, swapPartnerValueAfterMotion);
                     paintArray[xAfterSwapMotion][yAfterSwapMotion].setColor(swapMotionPaint.getColor());
                     dropInCount = 0;
+                } else if (tripleDrawMovesLeft > 0) {
+                    tripleDrawMovesLeft--;
+                    dropInCount = 0;
+                    updateBonusValues();
                 } else {
                     dropInCount = DROP_INS_AFTER_MOTION;
                 }
@@ -2963,6 +3193,29 @@ public class GameBoard {
         gameOverRect.right = canvasWidth;
     }
 
+    // Reactivates the board after a game over by undoing the fatal move, spending one
+    // undo bonus instead of starting a fresh game.
+    private void reactivateGameWithUndo() {
+        deselectAllBonuses();
+        gameBoardArray.unrollBackup();
+        undoCounter--;
+
+        gameOverAnimationPhase = 0;
+        gameOverAnimationCounter = 0;
+        if (gameOverUndoRect != null) gameOverUndoRect.setEmpty();
+
+        status = statusT.SELECT_START_POSITION;
+        updateBonusValues();
+        saveGame();
+    }
+
+    /** The joker field converts into two random bonuses, then disappears until re-earned. */
+    private void triggerJokerField() {
+        awardRandomBonus();
+        jokerFieldX = -1;
+        jokerFieldY = -1;
+    }
+
     private void startMergeAnimation() {
         int targetX = rectArray[targetPositionX][targetPositionY].left;
         int targetY = rectArray[targetPositionX][targetPositionY].top;
@@ -2985,12 +3238,23 @@ public class GameBoard {
         }
 
         mergeAnimationStep = MERGE_ANIMATION_TIME;
-        gameBoardArray.set(targetPositionX, targetPositionY, gameBoardArrayValueAfterMotion + 2);
+
+        // Reward a big combo (6+) with a joker stone instead of the normal upgraded
+        // tile - but only if there isn't one on the board already.
+        boolean spawnsJokerStone = mergeGroup.size() >= JOKER_STONE_MIN_COMBO_SIZE
+                && !gameBoardArray.containsJoker()
+                && !suppressJokerRewardsThisChain;
+        int resultValue = spawnsJokerStone ? GameBoardArray.JOKER_VALUE : gameBoardArrayValueAfterMotion + 2;
+        gameBoardArray.set(targetPositionX, targetPositionY, resultValue);
     }
 
      private void finishMergeAnimation() {
-         if (dropInCount == DROP_INS_AFTER_MOTION) {
-             dropInCount = 0;
+         // Any combo (whether from the player's move or from a random drop-in)
+         // cancels the remaining forced drop-ins and hands control back to the player.
+         dropInCount = 0;
+
+         if (!suppressJokerRewardsThisChain && targetPositionX == jokerFieldX && targetPositionY == jokerFieldY) {
+             triggerJokerField();
          }
 
          long comboScore = calculateComboScore(mergeGroup.size());
@@ -3093,7 +3357,7 @@ public class GameBoard {
         for (int y = 0; y < height; y++) {
             for (int x = 0; x < width; x++) {
                 int value = gameBoardArray.get(x, y);
-                if (value != -1 && value < minSpawnIndex) {
+                if (value != -1 && value != GameBoardArray.JOKER_VALUE && value < minSpawnIndex) {
                     cellsToRemove.add(new Coord(x, y));
                 }
             }
@@ -3132,6 +3396,10 @@ public class GameBoard {
         shiftLineText = Integer.toString(shiftLineCounter);
         colorClearText = Integer.toString(colorClearCounter);
         bombText     = Integer.toString(bombCounter);
+        shuffleText  = Integer.toString(shuffleCounter);
+        tripleDrawText = tripleDrawMovesLeft > 0
+                ? Integer.toString(tripleDrawMovesLeft)
+                : Integer.toString(tripleDrawCounter);
     }
 
     private long calculateComboScore(int comboSize) {
@@ -3202,6 +3470,8 @@ public class GameBoard {
             case 5: return jumpCounter;
             case 6: return delLineCounter;
             case 7: return colorClearCounter;
+            case 8: return shuffleCounter;
+            case 9: return tripleDrawCounter;
             default: return 0;
         }
     }
@@ -3231,6 +3501,12 @@ public class GameBoard {
                 break;
             case 7:
                 colorClearCounter += amount;
+                break;
+            case 8:
+                shuffleCounter += amount;
+                break;
+            case 9:
+                tripleDrawCounter += amount;
                 break;
             default:
                 break;
@@ -3376,7 +3652,7 @@ public class GameBoard {
         }
 
         if (dissolveAnimationRunning || lineDissolveAnimationRunning || colorClearAnimationRunning
-                || bombAnimationRunning || levelPruneAnimationRunning
+                || bombAnimationRunning || levelPruneAnimationRunning || shuffleAnimationRunning
                 || status == statusT.BONUS_SHIFT_ANIMATION) {
             return;
         }
@@ -3390,8 +3666,13 @@ public class GameBoard {
         int indexY = (int) (y / cellHeight);
 
         if (status == statusT.GAME_OVER) {
-            gameOverAnimationPhase = 0;
-            gameInit();
+            if (undoCounter > 0 && gameOverUndoRect != null && gameOverUndoRect.contains(x, y)) {
+                reactivateGameWithUndo();
+            } else {
+                gameOverAnimationPhase = 0;
+                gameInit();
+            }
+            return;
         }
 
         if (status == statusT.SELECT_START_POSITION) {
@@ -3571,10 +3852,346 @@ public class GameBoard {
         }
     }
 
+    private void applyShuffleBonus() {
+        startShuffleAnimation();
+    }
+
+    // Assigns each stone (values.get(i)/positions.get(i)) a final board cell. Up to
+    // SHUFFLE_CLUSTER_PERCENT of the stones are grouped into adjacent clusters of exactly
+    // MIN_COMBO_SIZE so the shuffle reliably sets up a few merges; the remaining stones are
+    // placed on the leftover cells at random so the whole board can't clear at once.
+    private void computeShuffleFinalPositions(java.util.List<Integer> values, java.util.List<int[]> positions,
+                                               int[] finalX, int[] finalY) {
+        int n = values.size();
+
+        java.util.LinkedHashSet<Long> availableKeys = new java.util.LinkedHashSet<>();
+        for (int[] p : positions) availableKeys.add(shufflePosKey(p[0], p[1]));
+
+        java.util.Map<Integer, java.util.List<Integer>> byValue = new java.util.LinkedHashMap<>();
+        for (int i = 0; i < n; i++) {
+            byValue.computeIfAbsent(values.get(i), k -> new java.util.ArrayList<>()).add(i);
+        }
+
+        java.util.List<Integer> candidateValues = new java.util.ArrayList<>();
+        for (java.util.Map.Entry<Integer, java.util.List<Integer>> e : byValue.entrySet()) {
+            if (e.getValue().size() >= MIN_COMBO_SIZE) candidateValues.add(e.getKey());
+        }
+        java.util.Collections.shuffle(candidateValues, rand);
+
+        int targetClusters = Math.min(candidateValues.size(),
+                SHUFFLE_MIN_CLUSTERS + rand.nextInt(SHUFFLE_MAX_CLUSTERS - SHUFFLE_MIN_CLUSTERS + 1));
+
+        boolean[] assigned = new boolean[n];
+        // Cells occupied by already-placed clusters plus their neighbors, so the next
+        // cluster never ends up touching one already placed (which could merge them
+        // into one oversized group, or immediately chain into a neighboring value).
+        java.util.Set<Long> blockedForNextCluster = new java.util.HashSet<>();
+        int[][] adjacency = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
+        int placedClusters = 0;
+
+        for (int val : candidateValues) {
+            if (placedClusters >= targetClusters) break;
+
+            java.util.List<Integer> idxList = new java.util.ArrayList<>(byValue.get(val));
+            java.util.Collections.shuffle(idxList, rand);
+            java.util.List<Integer> chosen = new java.util.ArrayList<>();
+            for (int idx : idxList) {
+                if (!assigned[idx]) {
+                    chosen.add(idx);
+                    if (chosen.size() == MIN_COMBO_SIZE) break;
+                }
+            }
+            if (chosen.size() < MIN_COMBO_SIZE) continue;
+
+            java.util.List<int[]> region = growShuffleRegion(availableKeys, MIN_COMBO_SIZE, blockedForNextCluster);
+            if (region.size() < MIN_COMBO_SIZE) {
+                for (int[] c : region) availableKeys.add(shufflePosKey(c[0], c[1]));
+                continue;
+            }
+
+            for (int k = 0; k < MIN_COMBO_SIZE; k++) {
+                int idx = chosen.get(k);
+                finalX[idx] = region.get(k)[0];
+                finalY[idx] = region.get(k)[1];
+                assigned[idx] = true;
+            }
+            for (int[] c : region) {
+                blockedForNextCluster.add(shufflePosKey(c[0], c[1]));
+                for (int[] d : adjacency) {
+                    blockedForNextCluster.add(shufflePosKey(c[0] + d[0], c[1] + d[1]));
+                }
+            }
+            placedClusters++;
+        }
+
+        java.util.List<Integer> remainingIndices = new java.util.ArrayList<>();
+        for (int i = 0; i < n; i++) if (!assigned[i]) remainingIndices.add(i);
+        java.util.List<Long> remainingKeys = new java.util.ArrayList<>(availableKeys);
+        java.util.Collections.shuffle(remainingKeys, rand);
+        for (int i = 0; i < remainingIndices.size(); i++) {
+            int idx = remainingIndices.get(i);
+            long key = remainingKeys.get(i);
+            finalX[idx] = shuffleKeyX(key);
+            finalY[idx] = shuffleKeyY(key);
+        }
+    }
+
+    // Grows a random connected region (4-directional adjacency) of up to `size` cells out of
+    // `available`, skipping any cell in `blocked` (e.g. cells touching an already-placed
+    // cluster) so the region can't start or grow into them. Removes consumed cells from
+    // `available`. Returns fewer than `size` cells only if the reachable, unblocked cells
+    // form pockets too small/disconnected to fill the request.
+    private java.util.List<int[]> growShuffleRegion(java.util.LinkedHashSet<Long> available, int size,
+                                                     java.util.Set<Long> blocked) {
+        java.util.List<int[]> region = new java.util.ArrayList<>();
+
+        java.util.List<Long> startCandidates = new java.util.ArrayList<>();
+        for (Long k : available) if (!blocked.contains(k)) startCandidates.add(k);
+        if (startCandidates.isEmpty()) return region;
+        long start = startCandidates.get(rand.nextInt(startCandidates.size()));
+
+        java.util.LinkedHashSet<Long> frontier = new java.util.LinkedHashSet<>();
+        frontier.add(start);
+        int[][] deltas = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
+
+        while (region.size() < size && !frontier.isEmpty()) {
+            java.util.List<Long> frontierList = new java.util.ArrayList<>(frontier);
+            long pick = frontierList.get(rand.nextInt(frontierList.size()));
+            frontier.remove(pick);
+            if (!available.contains(pick) || blocked.contains(pick)) continue;
+
+            available.remove(pick);
+            int px = shuffleKeyX(pick);
+            int py = shuffleKeyY(pick);
+            region.add(new int[]{px, py});
+
+            for (int[] d : deltas) {
+                long neighbor = shufflePosKey(px + d[0], py + d[1]);
+                if (available.contains(neighbor) && !blocked.contains(neighbor)) frontier.add(neighbor);
+            }
+        }
+        return region;
+    }
+
+    private static long shufflePosKey(int x, int y) {
+        return ((long) x << 20) | (y & 0xFFFFFL);
+    }
+
+    private static int shuffleKeyX(long key) {
+        return (int) (key >> 20);
+    }
+
+    private static int shuffleKeyY(long key) {
+        return (int) (key & 0xFFFFFL);
+    }
+
+    private void startShuffleAnimation() {
+        java.util.List<Integer> values = new java.util.ArrayList<>();
+        java.util.List<int[]> positions = new java.util.ArrayList<>();
+        for (int y = 0; y < height; y++) {
+            for (int x = 0; x < width; x++) {
+                int v = gameBoardArray.get(x, y);
+                if (v != -1) {
+                    values.add(v);
+                    positions.add(new int[]{x, y});
+                }
+            }
+        }
+
+        int n = values.size();
+        shuffleStoneCount = n;
+        shufflePileRects = new Rect[n];
+        shuffleFinalRects = new Rect[n];
+        shuffleCurrentRects = new Rect[n];
+        shuffleIncrementX = new float[n];
+        shuffleIncrementY = new float[n];
+        shufflePaints = new Paint[n];
+        shuffleTexts = new String[n];
+        shuffleValues = new int[n];
+        shuffleFinalX = new int[n];
+        shuffleFinalY = new int[n];
+        if (shuffleDrawRect == null) shuffleDrawRect = new Rect();
+
+        int[] shuffleFinalXTemp = new int[n];
+        int[] shuffleFinalYTemp = new int[n];
+        computeShuffleFinalPositions(values, positions, shuffleFinalXTemp, shuffleFinalYTemp);
+
+        int centerX = (int) (width * cellWidth / 2f);
+        int centerY = (int) (height * cellHeight / 2f);
+        int pileSize = (int) (Math.min(cellWidth, cellHeight) * 0.9f);
+
+        for (int i = 0; i < n; i++) {
+            int ox = positions.get(i)[0];
+            int oy = positions.get(i)[1];
+            int value = values.get(i);
+
+            shuffleValues[i] = value;
+            shuffleCurrentRects[i] = new Rect(rectArray[ox][oy]);
+
+            int jitterX = (int) ((rand.nextFloat() - 0.5f) * cellWidth * SHUFFLE_PILE_JITTER_RATIO);
+            int jitterY = (int) ((rand.nextFloat() - 0.5f) * cellHeight * SHUFFLE_PILE_JITTER_RATIO);
+            shufflePileRects[i] = new Rect(
+                    centerX - pileSize / 2 + jitterX, centerY - pileSize / 2 + jitterY,
+                    centerX + pileSize / 2 + jitterX, centerY + pileSize / 2 + jitterY);
+
+            int fx = shuffleFinalXTemp[i];
+            int fy = shuffleFinalYTemp[i];
+            shuffleFinalX[i] = fx;
+            shuffleFinalY[i] = fy;
+            shuffleFinalRects[i] = new Rect(rectArray[fx][fy]);
+
+            Paint p = new Paint();
+            p.setColor(getColorForValue(value));
+            shufflePaints[i] = p;
+            shuffleTexts[i] = getTextForValue(value);
+
+            gameBoardArray.set(ox, oy, -1);
+            paintArray[ox][oy].setColor(getColor(ox, oy));
+        }
+
+        java.util.List<Integer> drawOutCandidates = new java.util.ArrayList<>();
+        for (int i = 0; i < n - 1; i++) drawOutCandidates.add(i);
+        java.util.Collections.shuffle(drawOutCandidates, rand);
+        int drawOutCount = Math.min(SHUFFLE_DRAWOUT_COUNT, drawOutCandidates.size());
+        shuffleDrawOutIndices = new int[drawOutCount];
+        for (int i = 0; i < drawOutCount; i++) shuffleDrawOutIndices[i] = drawOutCandidates.get(i);
+        shuffleDrawOutIteration = 0;
+
+        for (int i = 0; i < n; i++) {
+            shuffleIncrementX[i] = (shufflePileRects[i].left - shuffleCurrentRects[i].left) / (float) SHUFFLE_GATHER_DURATION;
+            shuffleIncrementY[i] = (shufflePileRects[i].top - shuffleCurrentRects[i].top) / (float) SHUFFLE_GATHER_DURATION;
+        }
+
+        shuffleAnimationRunning = true;
+        shuffleAnimPhase = 0;
+        shuffleAnimCounter = SHUFFLE_GATHER_DURATION;
+        shuffleCounter--;
+    }
+
+    private void animateShuffleBonus() {
+        switch (shuffleAnimPhase) {
+            case 0:
+                animateShuffleGather();
+                break;
+            case 1:
+                animateShuffleDrawOut();
+                break;
+            case 2:
+                animateShuffleRedistribute();
+                break;
+            default:
+                break;
+        }
+    }
+
+    private void animateShuffleGather() {
+        shuffleAnimCounter--;
+        for (int i = 0; i < shuffleStoneCount; i++) {
+            shuffleCurrentRects[i].left = (int) (shuffleCurrentRects[i].left + shuffleIncrementX[i]);
+            shuffleCurrentRects[i].right = (int) (shuffleCurrentRects[i].right + shuffleIncrementX[i]);
+            shuffleCurrentRects[i].top = (int) (shuffleCurrentRects[i].top + shuffleIncrementY[i]);
+            shuffleCurrentRects[i].bottom = (int) (shuffleCurrentRects[i].bottom + shuffleIncrementY[i]);
+        }
+        if (shuffleAnimCounter <= 0) {
+            for (int i = 0; i < shuffleStoneCount; i++) {
+                shuffleCurrentRects[i] = new Rect(shufflePileRects[i]);
+            }
+            startNextShuffleDrawOut();
+        }
+    }
+
+    private void startNextShuffleDrawOut() {
+        if (shuffleDrawOutIteration >= shuffleDrawOutIndices.length) {
+            startShuffleRedistribute();
+            return;
+        }
+        shuffleAnimPhase = 1;
+        shuffleAnimCounter = SHUFFLE_DRAWOUT_DURATION;
+    }
+
+    private void animateShuffleDrawOut() {
+        shuffleAnimCounter--;
+        if (shuffleAnimCounter <= 0) {
+            shuffleDrawOutIteration++;
+            startNextShuffleDrawOut();
+        }
+    }
+
+    private void startShuffleRedistribute() {
+        shuffleAnimPhase = 2;
+        shuffleAnimCounter = SHUFFLE_REDISTRIBUTE_DURATION;
+        for (int i = 0; i < shuffleStoneCount; i++) {
+            shuffleIncrementX[i] = (shuffleFinalRects[i].left - shuffleCurrentRects[i].left) / (float) SHUFFLE_REDISTRIBUTE_DURATION;
+            shuffleIncrementY[i] = (shuffleFinalRects[i].top - shuffleCurrentRects[i].top) / (float) SHUFFLE_REDISTRIBUTE_DURATION;
+        }
+    }
+
+    private void animateShuffleRedistribute() {
+        shuffleAnimCounter--;
+        for (int i = 0; i < shuffleStoneCount; i++) {
+            shuffleCurrentRects[i].left = (int) (shuffleCurrentRects[i].left + shuffleIncrementX[i]);
+            shuffleCurrentRects[i].right = (int) (shuffleCurrentRects[i].right + shuffleIncrementX[i]);
+            shuffleCurrentRects[i].top = (int) (shuffleCurrentRects[i].top + shuffleIncrementY[i]);
+            shuffleCurrentRects[i].bottom = (int) (shuffleCurrentRects[i].bottom + shuffleIncrementY[i]);
+        }
+        if (shuffleAnimCounter <= 0) {
+            finishShuffleAnimation();
+        }
+    }
+
+    private void finishShuffleAnimation() {
+        for (int i = 0; i < shuffleStoneCount; i++) {
+            gameBoardArray.set(shuffleFinalX[i], shuffleFinalY[i], shuffleValues[i]);
+            paintArray[shuffleFinalX[i]][shuffleFinalY[i]].setColor(getColorForValue(shuffleValues[i]));
+        }
+
+        shuffleAnimationRunning = false;
+        shufflePileRects = null;
+        shuffleFinalRects = null;
+        shuffleCurrentRects = null;
+        shuffleIncrementX = null;
+        shuffleIncrementY = null;
+        shufflePaints = null;
+        shuffleTexts = null;
+        shuffleFinalX = null;
+        shuffleFinalY = null;
+        shuffleValues = null;
+        shuffleDrawOutIndices = null;
+
+        updateBonusValues();
+        // Combos created by the shuffle itself are luck, not skill - don't also
+        // reward them with a joker stone or a joker field payout.
+        suppressJokerRewardsThisChain = true;
+        continueAfterBonusBoardMutation();
+    }
+
+    private void drawShuffleAnimation(Canvas canvas) {
+        if (!shuffleAnimationRunning || shuffleCurrentRects == null) return;
+
+        int activeDrawOutIndex = -1;
+        if (shuffleAnimPhase == 1 && shuffleDrawOutIteration < shuffleDrawOutIndices.length) {
+            activeDrawOutIndex = shuffleDrawOutIndices[shuffleDrawOutIteration];
+        }
+
+        for (int i = 0; i < shuffleStoneCount; i++) {
+            if (i == activeDrawOutIndex) continue;
+            drawCell(canvas, shuffleCurrentRects[i], shufflePaints[i], shuffleTexts[i]);
+        }
+
+        if (activeDrawOutIndex >= 0) {
+            float progress = 1.0f - (float) shuffleAnimCounter / (float) SHUFFLE_DRAWOUT_DURATION;
+            float lift = (float) Math.sin(Math.PI * progress) * cellHeight * SHUFFLE_DRAWOUT_LIFT_RATIO;
+            shuffleDrawRect.set(shuffleCurrentRects[activeDrawOutIndex]);
+            shuffleDrawRect.offset(0, -(int) lift);
+            drawCell(canvas, shuffleDrawRect, shufflePaints[activeDrawOutIndex], shuffleTexts[activeDrawOutIndex]);
+        }
+    }
+
     private void continueAfterBonusBoardMutation() {
         boardWideMergeScanActive = true;
         if (!startBoardWideMergeIfAvailable()) {
             boardWideMergeScanActive = false;
+            suppressJokerRewardsThisChain = false;
             startDropInsIfBoardEmpty();
         }
     }
@@ -3650,6 +4267,18 @@ public class GameBoard {
             }
             return true;
         }
+        if (shuffleBuyRect.contains(x, y)) {
+            if (tryBuyBonus(shuffleBuyRect, x, y, BUY_COST_SHUFFLE)) {
+                shuffleCounter++;
+            }
+            return true;
+        }
+        if (tripleDrawBuyRect.contains(x, y)) {
+            if (tryBuyBonus(tripleDrawBuyRect, x, y, BUY_COST_TRIPLE_DRAW)) {
+                tripleDrawCounter++;
+            }
+            return true;
+        }
 
         if (undoSlotRect.contains(x, y) && undoCounter > 0) {
             deselectAllBonuses();
@@ -3702,6 +4331,18 @@ public class GameBoard {
             boolean prev = bombSelected;
             deselectAllBonuses();
             bombSelected = !prev;
+            return true;
+        }
+        if (shuffleSlotRect.contains(x, y) && shuffleCounter > 0) {
+            deselectAllBonuses();
+            applyShuffleBonus();
+            return true;
+        }
+        if (tripleDrawSlotRect.contains(x, y) && tripleDrawCounter > 0) {
+            deselectAllBonuses();
+            tripleDrawCounter--;
+            tripleDrawMovesLeft += 3;
+            updateBonusValues();
             return true;
         }
 
@@ -3771,8 +4412,11 @@ public class GameBoard {
 
 
     public String getText(int x, int y) {
-        int val = gameBoardArray.get(x, y);
-        if (val == -1) {
+        return getTextForValue(gameBoardArray.get(x, y));
+    }
+
+    private String getTextForValue(int val) {
+        if (val == -1 || val == GameBoardArray.JOKER_VALUE) {
             return "";
         } else if (val < 10) {
             return Integer.toString(1 << val);
@@ -3794,7 +4438,8 @@ public class GameBoard {
         if (undoBuyRect == null) return -1;
         Rect[] buys = {
             undoBuyRect, dissolveBuyRect, swapBuyRect, bombBuyRect,
-            shiftLineBuyRect, jumpBuyRect, delLineBuyRect, colorClearBuyRect
+            shiftLineBuyRect, jumpBuyRect, delLineBuyRect, colorClearBuyRect,
+            shuffleBuyRect, tripleDrawBuyRect
         };
         for (int i = 0; i < buys.length; i++) {
             if (buys[i] != null && buys[i].contains(x, y)) return i;
@@ -3818,7 +4463,8 @@ public class GameBoard {
         if (undoSlotRect == null) return -1;
         Rect[] slots = {
             undoSlotRect, dissolveSlotRect, swapSlotRect, bombSlotRect,
-            shiftLineSlotRect, jumpSlotRect, delLineSlotRect, colorClearSlotRect
+            shiftLineSlotRect, jumpSlotRect, delLineSlotRect, colorClearSlotRect,
+            shuffleSlotRect, tripleDrawSlotRect
         };
         for (int i = 0; i < slots.length; i++) {
             if (slots[i] != null && slots[i].contains(x, y)) return i;
