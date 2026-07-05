@@ -58,6 +58,7 @@ public class Game extends SurfaceView implements SurfaceHolder.Callback {
                 new GestureDetector.SimpleOnGestureListener() {
             @Override
             public void onLongPress(MotionEvent e) {
+                if (gameBoard.isTutorialActive()) return;
                 int bx = (int) e.getX(), by = (int) e.getY();
                 int idx = gameBoard.getBonusSlotIndexAt(bx, by);
                 if (idx >= 0) {
@@ -97,7 +98,12 @@ public class Game extends SurfaceView implements SurfaceHolder.Callback {
     public boolean onTouchEvent(MotionEvent event) {
         gestureDetector.onTouchEvent(event);
         int action = event.getActionMasked();
-        if (action == MotionEvent.ACTION_DOWN) {
+        if (action == MotionEvent.ACTION_DOWN && !gameBoard.isTutorialActive()) {
+            if (gameBoard.isHelpButtonAt((int) event.getX(), (int) event.getY())) {
+                gameBoard.startTutorial();
+                performClick();
+                return true;
+            }
             int buyIdx = gameBoard.getBuyButtonIndexAt((int) event.getX(), (int) event.getY());
             if (buyIdx >= 0) {
                 showBuyConfirmDialog(buyIdx);

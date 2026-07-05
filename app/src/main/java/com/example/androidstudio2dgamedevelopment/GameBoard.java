@@ -115,6 +115,7 @@ public class GameBoard {
     private static final String PREF_KEY_HIGHSCORE = "highscore";
     private static final String PREF_KEY_AUTO_HIGHSCORE = "auto_highscore";
     private static final String PREF_KEY_HIGHSCORE_RESET_VERSION = "highscore_reset_version";
+    private static final String PREF_KEY_TUTORIAL_SHOWN = "tutorial_shown";
     // Bump this value to trigger a one-time highscore reset on next launch
     private static final int HIGHSCORE_RESET_VERSION = 2;
 
@@ -389,6 +390,9 @@ public class GameBoard {
     private Rect statusScoreRect;
     private Rect statusLevelRect;
     private Rect statusBestRect;
+    private float density;
+    private Rect helpButtonRect;
+    private TutorialOverlay tutorial;
     private int[] secretCodeProgress;
     private long secretCodeLastTapMs;
 
@@ -611,6 +615,9 @@ public class GameBoard {
         updateBonusValues();
 
         this.context = context;
+        this.density = context.getResources().getDisplayMetrics().density;
+        this.tutorial = new TutorialOverlay(buildTutorialSteps(),
+                () -> prefs.edit().putBoolean(PREF_KEY_TUTORIAL_SHOWN, true).apply());
 
         textPaint = new Paint();
         textPaint.setColor(TEXT_COLOR_WHITE);
@@ -716,6 +723,48 @@ public class GameBoard {
 
     }
 
+    private TutorialOverlay.Step[] buildTutorialSteps() {
+        return new TutorialOverlay.Step[]{
+                new TutorialOverlay.Step("Willkommen!",
+                        "Bringe gleiche Steine zusammen und lass sie verschmelzen. Diese kurze Einführung zeigt dir die wichtigsten Elemente.",
+                        null),
+                new TutorialOverlay.Step("Spielfeld",
+                        "Tippe einen Stein an und danach sein Ziel – ist der Weg frei, wird er dorthin verschoben. Ab 4 gleichen Steinen verschmelzen sie, größere und verkettete Combos bringen deutlich mehr Punkte. Riesige Combos erschaffen einen Jokerstein (passt zu jedem Wert), verkettete Combos ein goldenes Bonusfeld.",
+                        () -> new Rect(0, 0, canvasWidth, (int) (height * cellHeight))),
+                new TutorialOverlay.Step("Boni",
+                        "Hier kaufst du Boni wie Rückgängig, Tausch oder Bombe. Tippen kauft, langes Drücken zeigt Details.",
+                        () -> boundingRect(undoSlotRect, shuffleSlotRect)),
+                new TutorialOverlay.Step("Punktestand",
+                        "Deine aktuellen Punkte. Ein langer Druck öffnet deine Spielstände zum Speichern und Laden.",
+                        () -> statusScoreRect),
+                new TutorialOverlay.Step("Level",
+                        "Mit mehr Punkten steigt dein Level. Ein langer Druck zeigt einen Hinweis zum aktuellen Level.",
+                        () -> statusLevelRect),
+                new TutorialOverlay.Step("Bestwert",
+                        "Dein bisheriger Highscore – wird automatisch aktualisiert, sobald du ihn überbietest.",
+                        () -> statusBestRect),
+                new TutorialOverlay.Step("Los geht's!",
+                        "Du kannst diese Anleitung jederzeit über das ?-Symbol oben rechts erneut öffnen.",
+                        null)
+        };
+    }
+
+    private static Rect boundingRect(Rect a, Rect b) {
+        return new Rect(Math.min(a.left, b.left), Math.min(a.top, b.top),
+                Math.max(a.right, b.right), Math.max(a.bottom, b.bottom));
+    }
+
+    public boolean isTutorialActive() {
+        return tutorial.isActive();
+    }
+
+    public boolean isHelpButtonAt(int x, int y) {
+        return helpButtonRect != null && helpButtonRect.contains(x, y);
+    }
+
+    public void startTutorial() {
+        tutorial.start();
+    }
 
     private void gameInit() {
         gameBoardArray.clear();
@@ -1125,6 +1174,13 @@ public class GameBoard {
             rectWidth  = cellWidth  - 2.0f * RECT_BORDER;
             rectHeight = cellHeight - 2.0f * RECT_BORDER;
             initBonusIcons();
+            int helpSize = (int) (26 * density);
+            int helpMargin = (int) (6 * density);
+            helpButtonRect = new Rect(canvasWidth - helpMargin - helpSize, helpMargin,
+                    canvasWidth - helpMargin, helpMargin + helpSize);
+            if (!prefs.getBoolean(PREF_KEY_TUTORIAL_SHOWN, false)) {
+                tutorial.start();
+            }
         }
 
         if (alertAnimationCounter > 0) {
@@ -1176,6 +1232,11 @@ public class GameBoard {
 
         if (selfPlayActive) {
             drawSelfPlayOverlay(canvas);
+        }
+
+        tutorial.drawHelpButton(canvas, helpButtonRect);
+        if (tutorial.isActive()) {
+            tutorial.draw(canvas, canvasWidth, canvasHeight, density);
         }
     }
 
@@ -2162,6 +2223,10 @@ public class GameBoard {
     }
 
     public void update() {
+        tutorial.update();
+        if (tutorial.isActive()) {
+            return;
+        }
         updateHudFlips();
         //-----------------------------------------------------
         // general animation
@@ -3633,6 +3698,13 @@ public class GameBoard {
     }
 
     public void onTouchEvent(int action, int x, int y) {
+
+        if (tutorial.isActive()) {
+            if (action == MotionEvent.ACTION_DOWN) {
+                tutorial.handleTouch(x, y);
+            }
+            return;
+        }
 
         if (action == MotionEvent.ACTION_DOWN) {
             touchDownX = x;
