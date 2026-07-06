@@ -72,8 +72,7 @@ public class Game extends SurfaceView implements SurfaceHolder.Callback {
                     gameBoard.deselectAllBonuses();
                     showBonusInfoPopup(idx);
                 } else if (gameBoard.isBestHudAt(bx, by)) {
-                    if (gameBoard.getAutoHighScore() > 0) showBestPanelMenu();
-                    else showLeaderboardDialog();
+                    showLeaderboardDialog();
                 } else if (gameBoard.isLevelHudAt(bx, by)) {
                     showLevelHint();
                 } else if (gameBoard.isScoreHudAt(bx, by)) {
@@ -485,27 +484,6 @@ public class Game extends SurfaceView implements SurfaceHolder.Callback {
                 Toast.makeText(ctx, hint, Toast.LENGTH_LONG).show());
     }
 
-    private void showResetAutoHighScoreDialog() {
-        Context ctx = getContext();
-        if (!(ctx instanceof Activity)) return;
-        ((Activity) ctx).runOnUiThread(() -> {
-            AlertDialog dialog = new AlertDialog.Builder(ctx)
-                    .setTitle("AUTO-Highscore zurücksetzen?")
-                    .setMessage("Der AUTO-Highscore wird auf 0 gesetzt.\nDer normale Highscore bleibt unberührt.")
-                    .setPositiveButton("Zurücksetzen", (d, w) -> gameBoard.resetAutoHighScore())
-                    .setNegativeButton("Abbrechen", null)
-                    .create();
-            if (dialog.getWindow() != null) {
-                dialog.getWindow().setBackgroundDrawable(new ColorDrawable(0xFF16213A));
-            }
-            dialog.show();
-            Button posBtn = dialog.getButton(AlertDialog.BUTTON_POSITIVE);
-            if (posBtn != null) posBtn.setTextColor(0xFFFF6B6B);
-            Button negBtn = dialog.getButton(AlertDialog.BUTTON_NEGATIVE);
-            if (negBtn != null) negBtn.setTextColor(0xFFCFD7EE);
-        });
-    }
-
     /** Builds a title TextView styled to match the dialogs' dark background (setTitle() renders black text). */
     private TextView buildDialogTitle(Context ctx, String text) {
         TextView titleView = new TextView(ctx);
@@ -520,43 +498,6 @@ public class Game extends SurfaceView implements SurfaceHolder.Callback {
         titleLP.bottomMargin = dp(12);
         titleView.setLayoutParams(titleLP);
         return titleView;
-    }
-
-    /** Long-press menu for the BEST panel when a bot highscore exists (so both actions stay reachable). */
-    private void showBestPanelMenu() {
-        Context ctx = getContext();
-        if (!(ctx instanceof Activity)) return;
-        ((Activity) ctx).runOnUiThread(() -> {
-            LinearLayout root = new LinearLayout(ctx);
-            root.setOrientation(LinearLayout.VERTICAL);
-            root.setPadding(dp(8), dp(16), dp(8), dp(8));
-
-            AlertDialog[] holder = {null};
-            String[] items = {"Bestenliste anzeigen", "Bot-Highscore zurücksetzen"};
-            Runnable[] actions = {this::showLeaderboardDialog, this::showResetAutoHighScoreDialog};
-            for (int i = 0; i < items.length; i++) {
-                Runnable action = actions[i];
-                TextView row = new TextView(ctx);
-                row.setText(items[i]);
-                row.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f);
-                row.setTextColor(0xFFCFD7EE);
-                row.setPadding(dp(16), dp(12), dp(16), dp(12));
-                row.setOnClickListener(v -> {
-                    if (holder[0] != null) holder[0].dismiss();
-                    action.run();
-                });
-                root.addView(row);
-            }
-
-            AlertDialog dialog = new AlertDialog.Builder(ctx)
-                    .setView(root)
-                    .create();
-            if (dialog.getWindow() != null) {
-                dialog.getWindow().setBackgroundDrawable(new ColorDrawable(0xFF16213A));
-            }
-            holder[0] = dialog;
-            dialog.show();
-        });
     }
 
     /** Prompt shown once when the player beats their local highscore, offering to submit it online. */

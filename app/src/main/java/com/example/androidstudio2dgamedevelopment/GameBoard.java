@@ -986,11 +986,11 @@ public class GameBoard {
     /** Resets the auto high score to zero and persists the change. */
     public void resetAutoHighScore() {
         autoHighScore = 0;
+        autoHighscoreExceeded = false;
         prefs.edit().putLong(PREF_KEY_AUTO_HIGHSCORE, 0).apply();
         initHudSlot(HUD_SLOT_BEST, getScoreText(selfPlayActive ? autoHighScore : highScore));
+        alertAnimationCounter = ALERT_TIME / 2;
     }
-
-    public long getAutoHighScore() { return autoHighScore; }
 
     /** Returns the current (player, non-bot) high score. */
     public long getHighScore() { return highScore; }
@@ -3162,7 +3162,7 @@ public class GameBoard {
                 } else if (i == 1) {
                     grantLevelUpTestPoints();
                 } else if (i == 2) {
-                    resetHighscore();
+                    if (selfPlayActive) resetAutoHighScore(); else resetHighscore();
                 } else {
                     toggleSelfPlay();
                 }
