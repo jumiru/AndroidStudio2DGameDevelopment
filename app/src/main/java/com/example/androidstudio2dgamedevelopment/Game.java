@@ -10,6 +10,7 @@ import android.graphics.Paint;
 import android.graphics.Typeface;
 import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.GradientDrawable;
+import android.text.InputType;
 import android.util.Log;
 import android.util.TypedValue;
 import android.view.GestureDetector;
@@ -18,14 +19,18 @@ import android.view.MotionEvent;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
 import android.widget.Button;
+import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
+import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.core.content.ContextCompat;
+
+import java.util.List;
 
 /**
  * Game manages all objects in the game and is responsible for updating all states
@@ -39,6 +44,8 @@ public class Game extends SurfaceView implements SurfaceHolder.Callback {
     private GameLoop gameLoop;
     private final GestureDetector gestureDetector;
     private boolean lastSelfPlayActive = false;
+    private final LeaderboardManager leaderboardManager = new LeaderboardManager();
+    private GameBoard.statusT lastStatus = null;
 
     /** Cached paints for debug overlays – allocated once, not every frame. */
     private final Paint debugPaint;
@@ -65,7 +72,8 @@ public class Game extends SurfaceView implements SurfaceHolder.Callback {
                     gameBoard.deselectAllBonuses();
                     showBonusInfoPopup(idx);
                 } else if (gameBoard.isBestHudAt(bx, by)) {
-                    if (gameBoard.getAutoHighScore() > 0) showResetAutoHighScoreDialog();
+                    if (gameBoard.getAutoHighScore() > 0) showBestPanelMenu();
+                    else showLeaderboardDialog();
                 } else if (gameBoard.isLevelHudAt(bx, by)) {
                     showLevelHint();
                 } else if (gameBoard.isScoreHudAt(bx, by)) {
@@ -152,6 +160,12 @@ public class Game extends SurfaceView implements SurfaceHolder.Callback {
             lastSelfPlayActive = selfPlay;
             post(() -> setKeepScreenOn(selfPlay));
         }
+        GameBoard.statusT status = gameBoard.getStatus();
+        if (status == GameBoard.statusT.GAME_OVER && lastStatus != GameBoard.statusT.GAME_OVER
+                && gameBoard.isHighscoreExceeded() && !gameBoard.isCheatActive()) {
+            post(this::showNewHighscoreSubmitDialog);
+        }
+        lastStatus = status;
     }
 
     public void pause() {
@@ -490,6 +504,215 @@ public class Game extends SurfaceView implements SurfaceHolder.Callback {
             Button negBtn = dialog.getButton(AlertDialog.BUTTON_NEGATIVE);
             if (negBtn != null) negBtn.setTextColor(0xFFCFD7EE);
         });
+    }
+
+    /** Builds a title TextView styled to match the dialogs' dark background (setTitle() renders black text). */
+    private TextView buildDialogTitle(Context ctx, String text) {
+        TextView titleView = new TextView(ctx);
+        titleView.setText(text);
+        titleView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 18f);
+        titleView.setTypeface(Typeface.DEFAULT_BOLD);
+        titleView.setTextColor(0xFFF5BF4F);
+        titleView.setGravity(Gravity.CENTER);
+        LinearLayout.LayoutParams titleLP = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT);
+        titleLP.bottomMargin = dp(12);
+        titleView.setLayoutParams(titleLP);
+        return titleView;
+    }
+
+    /** Long-press menu for the BEST panel when a bot highscore exists (so both actions stay reachable). */
+    private void showBestPanelMenu() {
+        Context ctx = getContext();
+        if (!(ctx instanceof Activity)) return;
+        ((Activity) ctx).runOnUiThread(() -> {
+            LinearLayout root = new LinearLayout(ctx);
+            root.setOrientation(LinearLayout.VERTICAL);
+            root.setPadding(dp(8), dp(16), dp(8), dp(8));
+
+            AlertDialog[] holder = {null};
+            String[] items = {"Bestenliste anzeigen", "Bot-Highscore zurücksetzen"};
+            Runnable[] actions = {this::showLeaderboardDialog, this::showResetAutoHighScoreDialog};
+            for (int i = 0; i < items.length; i++) {
+                Runnable action = actions[i];
+                TextView row = new TextView(ctx);
+                row.setText(items[i]);
+                row.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f);
+                row.setTextColor(0xFFCFD7EE);
+                row.setPadding(dp(16), dp(12), dp(16), dp(12));
+                row.setOnClickListener(v -> {
+                    if (holder[0] != null) holder[0].dismiss();
+                    action.run();
+                });
+                root.addView(row);
+            }
+
+            AlertDialog dialog = new AlertDialog.Builder(ctx)
+                    .setView(root)
+                    .create();
+            if (dialog.getWindow() != null) {
+                dialog.getWindow().setBackgroundDrawable(new ColorDrawable(0xFF16213A));
+            }
+            holder[0] = dialog;
+            dialog.show();
+        });
+    }
+
+    /** Prompt shown once when the player beats their local highscore, offering to submit it online. */
+    private void showNewHighscoreSubmitDialog() {
+        Context ctx = getContext();
+        if (!(ctx instanceof Activity)) return;
+        long score = gameBoard.getHighScore();
+        String savedName = gameBoard.getLeaderboardName();
+        ((Activity) ctx).runOnUiThread(() -> {
+            LinearLayout root = new LinearLayout(ctx);
+            root.setOrientation(LinearLayout.VERTICAL);
+            root.setPadding(dp(24), dp(16), dp(24), dp(8));
+            root.addView(buildDialogTitle(ctx, "Neuer Highscore!"));
+
+            TextView scoreView = new TextView(ctx);
+            scoreView.setText(gameBoard.getScoreText(score) + " Punkte");
+            scoreView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f);
+            scoreView.setTypeface(Typeface.DEFAULT_BOLD);
+            scoreView.setTextColor(0xFFF5BF4F);
+            scoreView.setGravity(Gravity.CENTER);
+            LinearLayout.LayoutParams scoreLP = new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT);
+            scoreLP.bottomMargin = dp(12);
+            scoreView.setLayoutParams(scoreLP);
+            root.addView(scoreView);
+
+            EditText nameInput = new EditText(ctx);
+            nameInput.setHint("Dein Name");
+            nameInput.setInputType(InputType.TYPE_CLASS_TEXT);
+            nameInput.setSingleLine(true);
+            nameInput.setText(savedName);
+            nameInput.setSelection(savedName != null ? savedName.length() : 0);
+            nameInput.setTextColor(0xFFCFD7EE);
+            nameInput.setHintTextColor(0xFF606880);
+            root.addView(nameInput);
+
+            AlertDialog dialog = new AlertDialog.Builder(ctx)
+                    .setView(root)
+                    .setPositiveButton("Einreichen", null)
+                    .setNegativeButton("Überspringen", null)
+                    .setCancelable(false)
+                    .create();
+            if (dialog.getWindow() != null) {
+                dialog.getWindow().setBackgroundDrawable(new ColorDrawable(0xFF16213A));
+            }
+            dialog.show();
+            Button posBtn = dialog.getButton(AlertDialog.BUTTON_POSITIVE);
+            Button negBtn = dialog.getButton(AlertDialog.BUTTON_NEGATIVE);
+            if (posBtn != null) {
+                posBtn.setTextColor(0xFF63D88E);
+                posBtn.setOnClickListener(v -> {
+                    String name = nameInput.getText().toString().trim();
+                    gameBoard.setLeaderboardName(name);
+                    leaderboardManager.submitScore(name, score,
+                            () -> ((Activity) ctx).runOnUiThread(() ->
+                                    Toast.makeText(ctx, "Score eingereicht!", Toast.LENGTH_SHORT).show()),
+                            e -> ((Activity) ctx).runOnUiThread(() ->
+                                    Toast.makeText(ctx, "Einreichen fehlgeschlagen: " + e.getMessage(), Toast.LENGTH_LONG).show()));
+                    dialog.dismiss();
+                });
+            }
+            if (negBtn != null) negBtn.setTextColor(0xFFCFD7EE);
+        });
+    }
+
+    /** Shows the online top-10 leaderboard, following the same card-list style as the save/load dialog. */
+    private void showLeaderboardDialog() {
+        Context ctx = getContext();
+        if (!(ctx instanceof Activity)) return;
+        ((Activity) ctx).runOnUiThread(() -> {
+            LinearLayout root = new LinearLayout(ctx);
+            root.setOrientation(LinearLayout.VERTICAL);
+            root.setPadding(dp(16), dp(16), dp(16), dp(8));
+            root.setGravity(Gravity.CENTER_HORIZONTAL);
+            root.addView(buildDialogTitle(ctx, "Bestenliste"));
+
+            ProgressBar progress = new ProgressBar(ctx);
+            root.addView(progress);
+
+            AlertDialog dialog = new AlertDialog.Builder(ctx)
+                    .setView(root)
+                    .setNegativeButton("Schließen", null)
+                    .create();
+            if (dialog.getWindow() != null) {
+                dialog.getWindow().setBackgroundDrawable(new ColorDrawable(0xFF16213A));
+            }
+            dialog.show();
+            Button closeBtn = dialog.getButton(AlertDialog.BUTTON_NEGATIVE);
+            if (closeBtn != null) closeBtn.setTextColor(0xFFCFD7EE);
+
+            leaderboardManager.fetchTop(10,
+                    entries -> ((Activity) ctx).runOnUiThread(() -> populateLeaderboard(root, progress, entries)),
+                    e -> ((Activity) ctx).runOnUiThread(() -> {
+                        root.removeView(progress);
+                        TextView errorView = new TextView(ctx);
+                        errorView.setText("Bestenliste konnte nicht geladen werden.");
+                        errorView.setTextColor(0xFFFF7F7F);
+                        errorView.setGravity(Gravity.CENTER);
+                        root.addView(errorView);
+                    }));
+        });
+    }
+
+    private void populateLeaderboard(LinearLayout root, ProgressBar progress, List<LeaderboardManager.LeaderboardEntry> entries) {
+        Context ctx = getContext();
+        root.removeView(progress);
+        if (entries.isEmpty()) {
+            TextView emptyView = new TextView(ctx);
+            emptyView.setText("Noch keine Einträge.");
+            emptyView.setTextColor(0xFFCFD7EE);
+            emptyView.setGravity(Gravity.CENTER);
+            root.addView(emptyView);
+            return;
+        }
+        for (int i = 0; i < entries.size(); i++) {
+            LeaderboardManager.LeaderboardEntry entry = entries.get(i);
+
+            LinearLayout row = new LinearLayout(ctx);
+            row.setOrientation(LinearLayout.HORIZONTAL);
+            GradientDrawable rowBg = new GradientDrawable();
+            rowBg.setColor(0xFF1A2A42);
+            rowBg.setCornerRadius(dp(10));
+            rowBg.setStroke(dp(1), 0xFF3A5A8A);
+            row.setBackground(rowBg);
+            row.setPadding(dp(12), dp(8), dp(12), dp(8));
+            LinearLayout.LayoutParams rowLP = new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT);
+            rowLP.bottomMargin = dp(6);
+            row.setLayoutParams(rowLP);
+
+            TextView rankView = new TextView(ctx);
+            rankView.setText("#" + (i + 1));
+            rankView.setTypeface(Typeface.DEFAULT_BOLD);
+            rankView.setTextColor(0xFFF5BF4F);
+            LinearLayout.LayoutParams rankLP = new LinearLayout.LayoutParams(dp(36), LinearLayout.LayoutParams.WRAP_CONTENT);
+            rankView.setLayoutParams(rankLP);
+            row.addView(rankView);
+
+            TextView nameView = new TextView(ctx);
+            nameView.setText(entry.name);
+            nameView.setTextColor(0xFFCFD7EE);
+            LinearLayout.LayoutParams nameLP = new LinearLayout.LayoutParams(
+                    0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
+            nameView.setLayoutParams(nameLP);
+            row.addView(nameView);
+
+            TextView scoreView = new TextView(ctx);
+            scoreView.setText(gameBoard.getScoreText(entry.score));
+            scoreView.setTypeface(Typeface.DEFAULT_BOLD);
+            scoreView.setTextColor(0xFF63B8FF);
+            row.addView(scoreView);
+
+            root.addView(row);
+        }
     }
 
     private int dp(int dp) {

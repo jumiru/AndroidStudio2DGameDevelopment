@@ -116,6 +116,7 @@ public class GameBoard {
     private static final String PREF_KEY_AUTO_HIGHSCORE = "auto_highscore";
     private static final String PREF_KEY_HIGHSCORE_RESET_VERSION = "highscore_reset_version";
     private static final String PREF_KEY_TUTORIAL_SHOWN = "tutorial_shown";
+    private static final String PREF_KEY_LEADERBOARD_NAME = "leaderboard_name";
     // Bump this value to trigger a one-time highscore reset on next launch
     private static final int HIGHSCORE_RESET_VERSION = 2;
 
@@ -990,6 +991,23 @@ public class GameBoard {
     }
 
     public long getAutoHighScore() { return autoHighScore; }
+
+    /** Returns the current (player, non-bot) high score. */
+    public long getHighScore() { return highScore; }
+
+    /** Returns the current game status (e.g. to detect a fresh GAME_OVER transition). */
+    public statusT getStatus() { return status; }
+
+    /** Returns true if the player highscore was beaten during the current game. */
+    public boolean isHighscoreExceeded() { return highscoreExceeded; }
+
+    /** Returns the nickname last used to submit a score to the online leaderboard, if any. */
+    public String getLeaderboardName() { return prefs.getString(PREF_KEY_LEADERBOARD_NAME, ""); }
+
+    /** Persists the nickname used to submit a score to the online leaderboard. */
+    public void setLeaderboardName(String name) {
+        prefs.edit().putString(PREF_KEY_LEADERBOARD_NAME, name).apply();
+    }
 
     /** Returns true once a hidden cheat/debug code has been used this session; saving is disabled after that. */
     public boolean isCheatActive() {
