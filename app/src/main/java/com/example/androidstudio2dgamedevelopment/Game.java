@@ -24,6 +24,7 @@ import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
+import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -69,6 +70,7 @@ public class Game extends SurfaceView implements SurfaceHolder.Callback {
                 int bx = (int) e.getX(), by = (int) e.getY();
                 int idx = gameBoard.getBonusSlotIndexAt(bx, by);
                 if (idx >= 0) {
+                    gameBoard.cancelPendingBonusTap();
                     gameBoard.deselectAllBonuses();
                     showBonusInfoPopup(idx);
                 } else if (gameBoard.isBestHudAt(bx, by)) {
@@ -106,8 +108,8 @@ public class Game extends SurfaceView implements SurfaceHolder.Callback {
         gestureDetector.onTouchEvent(event);
         int action = event.getActionMasked();
         if (action == MotionEvent.ACTION_DOWN && !gameBoard.isTutorialActive()) {
-            if (gameBoard.isHelpButtonAt((int) event.getX(), (int) event.getY())) {
-                gameBoard.startTutorial();
+            if (gameBoard.isMenuButtonAt((int) event.getX(), (int) event.getY())) {
+                showMenuDialog();
                 performClick();
                 return true;
             }
@@ -484,6 +486,107 @@ public class Game extends SurfaceView implements SurfaceHolder.Callback {
                 Toast.makeText(ctx, hint, Toast.LENGTH_LONG).show());
     }
 
+    /** Shows the burger menu opened from the top-right menu button. */
+    private void showMenuDialog() {
+        Context ctx = getContext();
+        if (!(ctx instanceof Activity)) return;
+        ((Activity) ctx).runOnUiThread(() -> {
+            LinearLayout root = new LinearLayout(ctx);
+            root.setOrientation(LinearLayout.VERTICAL);
+            root.setPadding(dp(16), dp(16), dp(16), dp(8));
+
+            AlertDialog dialog = new AlertDialog.Builder(ctx)
+                    .setView(root)
+                    .setNegativeButton("Schließen", null)
+                    .create();
+            if (dialog.getWindow() != null) {
+                dialog.getWindow().setBackgroundDrawable(new ColorDrawable(0xFF16213A));
+            }
+
+            addMenuItem(root, ctx, "Spielanleitung", 0xFF63B8FF, () -> {
+                dialog.dismiss();
+                gameBoard.startTutorial();
+            });
+            addMenuItem(root, ctx, "Spiel neu starten", 0xFFF5BF4F, () -> {
+                dialog.dismiss();
+                showRestartConfirmDialog();
+            });
+            addMenuItem(root, ctx, "Highscore zurücksetzen", 0xFFFF7F7F, () -> {
+                dialog.dismiss();
+                showResetHighscoreConfirmDialog();
+            });
+
+            dialog.show();
+            Button closeBtn = dialog.getButton(AlertDialog.BUTTON_NEGATIVE);
+            if (closeBtn != null) closeBtn.setTextColor(0xFFCFD7EE);
+        });
+    }
+
+    private void addMenuItem(LinearLayout root, Context ctx, String label, int accent, Runnable action) {
+        TextView item = new TextView(ctx);
+        item.setText(label);
+        item.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f);
+        item.setTextColor(accent);
+        item.setTypeface(Typeface.DEFAULT_BOLD);
+        item.setGravity(Gravity.CENTER_VERTICAL);
+        item.setPadding(dp(16), dp(16), dp(16), dp(16));
+        GradientDrawable bg = new GradientDrawable();
+        bg.setColor(0xFF1A2A42);
+        bg.setCornerRadius(dp(10));
+        bg.setStroke(dp(1), 0xFF3A5A8A);
+        item.setBackground(bg);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        lp.bottomMargin = dp(8);
+        item.setLayoutParams(lp);
+        item.setOnClickListener(v -> action.run());
+        root.addView(item);
+    }
+
+    private void showRestartConfirmDialog() {
+        showConfirmDialog("Spiel neu starten?", "Der aktuelle Spielstand geht verloren.",
+                "Neu starten", gameBoard::restartGame);
+    }
+
+    private void showResetHighscoreConfirmDialog() {
+        showConfirmDialog("Highscore zurücksetzen?", "Dein gespeicherter Highscore wird auf 0 gesetzt.",
+                "Zurücksetzen", gameBoard::resetAllHighscores);
+    }
+
+    /** Generic destructive-action confirmation, styled to match the dark dialog theme
+     *  (plain {@code setTitle()}/{@code setMessage()} render in barely-visible dark text here). */
+    private void showConfirmDialog(String title, String message, String confirmLabel, Runnable onConfirm) {
+        Context ctx = getContext();
+        if (!(ctx instanceof Activity)) return;
+        ((Activity) ctx).runOnUiThread(() -> {
+            LinearLayout root = new LinearLayout(ctx);
+            root.setOrientation(LinearLayout.VERTICAL);
+            root.setPadding(dp(24), dp(16), dp(24), dp(8));
+            root.addView(buildDialogTitle(ctx, title));
+
+            TextView messageView = new TextView(ctx);
+            messageView.setText(message);
+            messageView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f);
+            messageView.setTextColor(0xFFCFD7EE);
+            messageView.setGravity(Gravity.CENTER);
+            root.addView(messageView);
+
+            AlertDialog dialog = new AlertDialog.Builder(ctx)
+                    .setView(root)
+                    .setPositiveButton(confirmLabel, (d, w) -> onConfirm.run())
+                    .setNegativeButton("Abbrechen", null)
+                    .create();
+            if (dialog.getWindow() != null) {
+                dialog.getWindow().setBackgroundDrawable(new ColorDrawable(0xFF16213A));
+            }
+            dialog.show();
+            Button posBtn = dialog.getButton(AlertDialog.BUTTON_POSITIVE);
+            Button negBtn = dialog.getButton(AlertDialog.BUTTON_NEGATIVE);
+            if (posBtn != null) posBtn.setTextColor(0xFFFF7F7F);
+            if (negBtn != null) negBtn.setTextColor(0xFFCFD7EE);
+        });
+    }
+
     /** Builds a title TextView styled to match the dialogs' dark background (setTitle() renders black text). */
     private TextView buildDialogTitle(Context ctx, String text) {
         TextView titleView = new TextView(ctx);
@@ -498,6 +601,30 @@ public class Game extends SurfaceView implements SurfaceHolder.Callback {
         titleLP.bottomMargin = dp(12);
         titleView.setLayoutParams(titleLP);
         return titleView;
+    }
+
+    /** Shows a full, scrollable/selectable error message so long texts (e.g. Firestore error codes) aren't cut off like a Toast would be. */
+    private void showErrorDialog(Context ctx, String title, String message) {
+        TextView messageView = new TextView(ctx);
+        messageView.setText(message);
+        messageView.setTextIsSelectable(true);
+        messageView.setTextColor(0xFFCFD7EE);
+        messageView.setPadding(dp(24), dp(16), dp(24), dp(8));
+
+        ScrollView scrollView = new ScrollView(ctx);
+        scrollView.addView(messageView);
+
+        AlertDialog dialog = new AlertDialog.Builder(ctx)
+                .setTitle(title)
+                .setView(scrollView)
+                .setPositiveButton("OK", null)
+                .create();
+        if (dialog.getWindow() != null) {
+            dialog.getWindow().setBackgroundDrawable(new ColorDrawable(0xFF16213A));
+        }
+        dialog.show();
+        Button okBtn = dialog.getButton(AlertDialog.BUTTON_POSITIVE);
+        if (okBtn != null) okBtn.setTextColor(0xFF63D88E);
     }
 
     /** Prompt shown once when the player beats their local highscore, offering to submit it online. */
@@ -556,7 +683,7 @@ public class Game extends SurfaceView implements SurfaceHolder.Callback {
                             () -> ((Activity) ctx).runOnUiThread(() ->
                                     Toast.makeText(ctx, "Score eingereicht!", Toast.LENGTH_SHORT).show()),
                             e -> ((Activity) ctx).runOnUiThread(() ->
-                                    Toast.makeText(ctx, "Einreichen fehlgeschlagen: " + e.getMessage(), Toast.LENGTH_LONG).show()));
+                                    showErrorDialog(ctx, "Einreichen fehlgeschlagen", String.valueOf(e.getMessage()))));
                     dialog.dismiss();
                 });
             }

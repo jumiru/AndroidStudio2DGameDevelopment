@@ -392,7 +392,7 @@ public class GameBoard {
     private Rect statusLevelRect;
     private Rect statusBestRect;
     private float density;
-    private Rect helpButtonRect;
+    private Rect menuButtonRect;
     private TutorialOverlay tutorial;
     private int[] secretCodeProgress;
     private long secretCodeLastTapMs;
@@ -525,6 +525,18 @@ public class GameBoard {
     private int shuffleCounter;
     private int tripleDrawCounter;
     private int tripleDrawMovesLeft;
+    // True once at least one move has been made since triple draw was (last) activated;
+    // while false, tapping the slot again cancels/refunds it instead of stacking.
+    private boolean tripleDrawMoveUsed;
+
+    // Instant-fire bonus slot (undo/shuffle/triple draw) touched but not yet released;
+    // executed on ACTION_UP so a long press (which shows the info popup instead) can
+    // cancel it before it fires.
+    private int pendingTapBonusIndex = -1;
+    private static final int BONUS_IDX_UNDO = 0;
+    private static final int BONUS_IDX_SHUFFLE = 8;
+    private static final int BONUS_IDX_TRIPLE_DRAW = 9;
+    private static final int ACTION_CANCEL_TRIPLE_DRAW = 100;
 
     private boolean undoSelected;
     private boolean swapSelected;
@@ -759,12 +771,23 @@ public class GameBoard {
         return tutorial.isActive();
     }
 
-    public boolean isHelpButtonAt(int x, int y) {
-        return helpButtonRect != null && helpButtonRect.contains(x, y);
+    public boolean isMenuButtonAt(int x, int y) {
+        return menuButtonRect != null && menuButtonRect.contains(x, y);
     }
 
     public void startTutorial() {
         tutorial.start();
+    }
+
+    /** Restarts the game from the burger menu, discarding the current run. */
+    public void restartGame() {
+        gameInit();
+    }
+
+    /** Resets both the normal and auto-play high scores, e.g. from the burger menu. */
+    public void resetAllHighscores() {
+        resetHighscore();
+        resetAutoHighScore();
     }
 
     private void gameInit() {
@@ -794,6 +817,7 @@ public class GameBoard {
         shuffleCounter = 0;
         tripleDrawCounter = 0;
         tripleDrawMovesLeft = 0;
+        tripleDrawMoveUsed = false;
         addBonusCount(getWeightedRandomBonusIndex(), 1);
         addBonusCount(getWeightedRandomBonusIndex(), 1);
         addBonusCount(getWeightedRandomBonusIndex(), 1);
@@ -1194,7 +1218,7 @@ public class GameBoard {
             initBonusIcons();
             int helpSize = (int) (26 * density);
             int helpMargin = (int) (6 * density);
-            helpButtonRect = new Rect(canvasWidth - helpMargin - helpSize, helpMargin,
+            menuButtonRect = new Rect(canvasWidth - helpMargin - helpSize, helpMargin,
                     canvasWidth - helpMargin, helpMargin + helpSize);
             if (!prefs.getBoolean(PREF_KEY_TUTORIAL_SHOWN, false)) {
                 tutorial.start();
@@ -1252,7 +1276,7 @@ public class GameBoard {
             drawSelfPlayOverlay(canvas);
         }
 
-        tutorial.drawHelpButton(canvas, helpButtonRect);
+        tutorial.drawMenuButton(canvas, menuButtonRect);
         if (tutorial.isActive()) {
             tutorial.draw(canvas, canvasWidth, canvasHeight, density);
         }
@@ -2593,6 +2617,7 @@ public class GameBoard {
                     dropInCount = 0;
                 } else if (tripleDrawMovesLeft > 0) {
                     tripleDrawMovesLeft--;
+                    tripleDrawMoveUsed = true;
                     dropInCount = 0;
                     updateBonusValues();
                 } else {
@@ -3730,6 +3755,10 @@ public class GameBoard {
         }
 
         if (action == MotionEvent.ACTION_UP) {
+            if (pendingTapBonusIndex >= 0) {
+                executePendingBonusTap();
+                return;
+            }
             if (tryHandleShiftSwipeGesture(x, y)) {
                 updateBonusValues();
                 return;
@@ -3801,6 +3830,7 @@ public class GameBoard {
                     } else {
                         // normal motion, i.e. find path from start to target
                         motionPath = gameBoardArray.findPath(startPositionX, startPositionY, targetPositionX, targetPositionY, swapSelected);
+                        boolean swapTargetCleared = false;
                         if (swapSelected) {
                             if (cellValue != -1) {
                                 invertMotionPath();
@@ -3813,7 +3843,10 @@ public class GameBoard {
                                 gameBoardArray.set(targetPositionX, targetPositionY, -1);
                                 swap2ndMergePositionX = startPositionX;
                                 swap2ndMergePositionY = startPositionY;
+                                swapTargetCleared = true;
                             } else {
+                                // empty cell picked as swap target: nothing to swap with,
+                                // reject the tap without touching the board
                                 motionPath = new ArrayList<>();
                                 alertAnimationCounter = ALERT_TIME;
                             }
@@ -3824,7 +3857,7 @@ public class GameBoard {
                         } else {
                             alertAnimationCounter = ALERT_TIME;
                             motionPath = new ArrayList<>();
-                            if (swapSelected) {
+                            if (swapTargetCleared) {
                                 resetCell(startPositionX, startPositionY);
                                 status = statusT.SELECT_START_POSITION;
                                 gameBoardArray.set(targetPositionX, targetPositionY, swapPartnerValueAfterMotion);
@@ -4372,10 +4405,32 @@ public class GameBoard {
 
         if (undoSlotRect.contains(x, y) && undoCounter > 0) {
             deselectAllBonuses();
-            gameBoardArray.unrollBackup();
-            undoCounter--;
+            pendingTapBonusIndex = BONUS_IDX_UNDO;
             return true;
         }
+
+        if (tripleDrawSlotRect.contains(x, y)) {
+            if (tripleDrawMovesLeft > 0) {
+                if (!tripleDrawMoveUsed) {
+                    // still fully unused since (re)activation: tapping again cancels it
+                    pendingTapBonusIndex = ACTION_CANCEL_TRIPLE_DRAW;
+                    return true;
+                }
+                return true; // already in use - can't cancel or restack mid-use
+            }
+            if (tripleDrawCounter > 0) {
+                deselectAllBonuses();
+                pendingTapBonusIndex = BONUS_IDX_TRIPLE_DRAW;
+                return true;
+            }
+            return false;
+        }
+
+        // While triple draw is running, no other bonus may be selected or triggered.
+        if (tripleDrawMovesLeft > 0) {
+            return true;
+        }
+
         if (swapSlotRect.contains(x, y) && swapCounter > 0) {
             boolean prev = swapSelected;
             deselectAllBonuses();
@@ -4425,18 +4480,44 @@ public class GameBoard {
         }
         if (shuffleSlotRect.contains(x, y) && shuffleCounter > 0) {
             deselectAllBonuses();
-            applyShuffleBonus();
-            return true;
-        }
-        if (tripleDrawSlotRect.contains(x, y) && tripleDrawCounter > 0) {
-            deselectAllBonuses();
-            tripleDrawCounter--;
-            tripleDrawMovesLeft += 3;
-            updateBonusValues();
+            pendingTapBonusIndex = BONUS_IDX_SHUFFLE;
             return true;
         }
 
         return false;
+    }
+
+    /** Executes an instant-fire bonus (undo/shuffle/triple draw) whose slot was tapped, once
+     *  the touch is released without turning into a long press. */
+    private void executePendingBonusTap() {
+        switch (pendingTapBonusIndex) {
+            case BONUS_IDX_UNDO:
+                gameBoardArray.unrollBackup();
+                undoCounter--;
+                break;
+            case BONUS_IDX_SHUFFLE:
+                applyShuffleBonus();
+                break;
+            case BONUS_IDX_TRIPLE_DRAW:
+                tripleDrawCounter--;
+                tripleDrawMovesLeft += 3;
+                tripleDrawMoveUsed = false;
+                break;
+            case ACTION_CANCEL_TRIPLE_DRAW:
+                tripleDrawMovesLeft = 0;
+                tripleDrawCounter++;
+                break;
+            default:
+                break;
+        }
+        pendingTapBonusIndex = -1;
+        updateBonusValues();
+    }
+
+    /** Cancels a pending instant-fire bonus tap, e.g. because a long press turned it into an
+     *  info popup instead of an activation. */
+    public void cancelPendingBonusTap() {
+        pendingTapBonusIndex = -1;
     }
 
     private boolean tryBuyBonus(Rect buyRect, int x, int y, long buyCost) {

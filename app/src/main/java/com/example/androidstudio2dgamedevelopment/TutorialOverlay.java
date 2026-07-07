@@ -64,7 +64,7 @@ class TutorialOverlay {
     private final Paint skipPaint;
     private final Paint helpBgPaint;
     private final Paint helpBorderPaint;
-    private final Paint helpTextPaint;
+    private final Paint menuLinePaint;
 
     private final RectF cardRectF = new RectF();
     private final RectF highlightRectF = new RectF();
@@ -118,10 +118,10 @@ class TutorialOverlay {
         helpBorderPaint.setStrokeWidth(3f);
         helpBorderPaint.setColor(HELP_BORDER_COLOR);
 
-        helpTextPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        helpTextPaint.setColor(HELP_BORDER_COLOR);
-        helpTextPaint.setTypeface(Typeface.DEFAULT_BOLD);
-        helpTextPaint.setTextAlign(Paint.Align.CENTER);
+        menuLinePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        menuLinePaint.setColor(HELP_BORDER_COLOR);
+        menuLinePaint.setStyle(Paint.Style.STROKE);
+        menuLinePaint.setStrokeCap(Paint.Cap.ROUND);
     }
 
     boolean isActive() {
@@ -290,16 +290,22 @@ class TutorialOverlay {
         return lines;
     }
 
-    void drawHelpButton(Canvas canvas, Rect rect) {
+    void drawMenuButton(Canvas canvas, Rect rect) {
         if (rect == null || active) {
             return;
         }
         float radius = rect.width() / 2f;
         canvas.drawCircle(rect.centerX(), rect.centerY(), radius, helpBgPaint);
         canvas.drawCircle(rect.centerX(), rect.centerY(), radius, helpBorderPaint);
-        helpTextPaint.setTextSize(rect.height() * 0.58f);
-        Paint.FontMetrics fm = helpTextPaint.getFontMetrics();
-        float baseline = rect.centerY() - (fm.ascent + fm.descent) / 2f;
-        canvas.drawText("?", rect.centerX(), baseline, helpTextPaint);
+
+        float lineHalfWidth = rect.width() * 0.28f;
+        float left = rect.centerX() - lineHalfWidth;
+        float right = rect.centerX() + lineHalfWidth;
+        float spacing = rect.height() * 0.22f;
+        menuLinePaint.setStrokeWidth(rect.height() * 0.09f);
+        for (int i = -1; i <= 1; i++) {
+            float lineY = rect.centerY() + i * spacing;
+            canvas.drawLine(left, lineY, right, lineY, menuLinePaint);
+        }
     }
 }
