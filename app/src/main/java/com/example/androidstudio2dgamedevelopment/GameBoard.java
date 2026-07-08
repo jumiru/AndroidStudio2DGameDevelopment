@@ -9,7 +9,10 @@ import android.graphics.Paint;
 import android.graphics.Rect;
 import android.graphics.RectF;
 import android.graphics.drawable.Drawable;
+import android.os.Handler;
+import android.os.Looper;
 import android.view.MotionEvent;
+import android.widget.Toast;
 
 import androidx.core.content.ContextCompat;
 
@@ -563,6 +566,7 @@ public class GameBoard {
     private Paint bonusSlotBorderPaint;
     private Paint bonusIconBgPaint;
     private Paint bonusIconSelectedBorderPaint;
+    private Paint bonusDisabledOverlayPaint;
     private final RectF bonusSlotRect;
 
     // swap bonus
@@ -1886,7 +1890,8 @@ public class GameBoard {
     }
 
     private void drawBonusInformation(Canvas canvas) {
-        drawBonusSlot(canvas, undo, undoRect, undoText, undoBuyRect, BUY_COST_UNDO, BONUS_ACCENT_COLORS[0], undoSelected, bonusSlotWidth);
+        boolean undoDisabled = undoCounter > 0 && !gameBoardArray.hasUndoSnapshot();
+        drawBonusSlot(canvas, undo, undoRect, undoText, undoBuyRect, BUY_COST_UNDO, BONUS_ACCENT_COLORS[0], undoSelected, bonusSlotWidth, undoDisabled);
         drawBonusSlot(canvas, dissolve, dissolveRect, dissolveText, dissolveBuyRect, BUY_COST_DISSOLVE, BONUS_ACCENT_COLORS[1], dissolveSelected, bonusSlotWidth);
         drawBonusSlot(canvas, swap, swapRect, swapText, swapBuyRect, BUY_COST_SWAP, BONUS_ACCENT_COLORS[2], swapSelected, bonusSlotWidth);
         drawBonusSlot(canvas, shiftLine, shiftLineRect, shiftLineText, shiftLineBuyRect, BUY_COST_SHIFT_LINE, BONUS_ACCENT_COLORS[4], shiftLineSelected, bonusSlotWidth);
@@ -1900,6 +1905,11 @@ public class GameBoard {
 
     private void drawBonusSlot(Canvas canvas, Drawable icon, Rect iconRect, String countText, Rect buyRect,
                                long buyCost, int accentColor, boolean isSelected, int slotWidth) {
+        drawBonusSlot(canvas, icon, iconRect, countText, buyRect, buyCost, accentColor, isSelected, slotWidth, false);
+    }
+
+    private void drawBonusSlot(Canvas canvas, Drawable icon, Rect iconRect, String countText, Rect buyRect,
+                               long buyCost, int accentColor, boolean isSelected, int slotWidth, boolean disabled) {
         float slotTop = iconRect.top - 2.0f * RECT_BORDER;
         float slotBottom = buyRect.bottom + RECT_BORDER;
         bonusSlotRect.set(buyRect.left - RECT_BORDER, slotTop, buyRect.right + RECT_BORDER, slotBottom);
@@ -1929,6 +1939,9 @@ public class GameBoard {
 
         if (icon != null) {
             icon.draw(canvas);
+        }
+        if (disabled) {
+            canvas.drawRoundRect(bonusSlotRect, 14.0f, 14.0f, bonusDisabledOverlayPaint);
         }
         int countOffset = getApproxXToCenterText(countText, bonusPaint, slotWidth);
         canvas.drawText(countText, iconRect.left + countOffset, iconRect.bottom + bonusPaint.getTextSize(), bonusPaint);
@@ -1980,6 +1993,11 @@ public class GameBoard {
                         centerX + iconSize / 2, centerY + iconSize / 2);
                 gameOverUndoIcon.setBounds(gameOverUndoRect);
                 gameOverUndoIcon.draw(canvas);
+                if (!gameBoardArray.hasUndoSnapshot()) {
+                    canvas.drawRoundRect(gameOverUndoRect.left, gameOverUndoRect.top,
+                            gameOverUndoRect.right, gameOverUndoRect.bottom, 14.0f, 14.0f,
+                            bonusDisabledOverlayPaint);
+                }
             } else if (gameOverUndoRect != null) {
                 gameOverUndoRect.setEmpty();
             }
@@ -2194,6 +2212,10 @@ public class GameBoard {
         bonusIconSelectedBorderPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         bonusIconSelectedBorderPaint.setStyle(Paint.Style.STROKE);
         bonusIconSelectedBorderPaint.setStrokeWidth(5.0f);
+
+        bonusDisabledOverlayPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        bonusDisabledOverlayPaint.setColor(0xb0202020);
+        bonusDisabledOverlayPaint.setStyle(Paint.Style.FILL);
 
         highlightPaint = new Paint();
         highlightPaint.setColor(HIGHLIGHT_COLOR);
@@ -3317,6 +3339,20 @@ public class GameBoard {
         saveGame();
     }
 
+    /** Undo is only usable if a bonus charge AND an actual saved board state are both available. */
+    private boolean canUseUndo() {
+        return undoCounter > 0 && gameBoardArray.hasUndoSnapshot();
+    }
+
+    /** Explains why undo can't be used right now. Posted to the main thread since this can be
+     *  reached from the self-play bot's background game-loop thread. */
+    private void showUndoUnavailableMessage() {
+        if (selfPlayActive) return;
+        new Handler(Looper.getMainLooper()).post(() -> Toast.makeText(context,
+                "Rückgängig nicht möglich: kein gespeicherter Spielstand vorhanden.",
+                Toast.LENGTH_SHORT).show());
+    }
+
     /** The joker field converts into two random bonuses, then disappears until re-earned. */
     private void triggerJokerField() {
         awardRandomBonus();
@@ -3785,8 +3821,17 @@ public class GameBoard {
         int indexY = (int) (y / cellHeight);
 
         if (status == statusT.GAME_OVER) {
-            if (undoCounter > 0 && gameOverUndoRect != null && gameOverUndoRect.contains(x, y)) {
-                reactivateGameWithUndo();
+            // The bonus-bar undo icon stays visible on top of the game-over overlay, so a tap on
+            // it must be treated as an undo attempt too - not just a tap on the big centered icon.
+            boolean tappedUndoIcon = undoCounter > 0 &&
+                    ((gameOverUndoRect != null && gameOverUndoRect.contains(x, y)) ||
+                     (undoSlotRect != null && undoSlotRect.contains(x, y)));
+            if (tappedUndoIcon) {
+                if (canUseUndo()) {
+                    reactivateGameWithUndo();
+                } else {
+                    showUndoUnavailableMessage();
+                }
             } else {
                 gameOverAnimationPhase = 0;
                 gameInit();
@@ -4404,6 +4449,10 @@ public class GameBoard {
         }
 
         if (undoSlotRect.contains(x, y) && undoCounter > 0) {
+            if (!canUseUndo()) {
+                showUndoUnavailableMessage();
+                return true;
+            }
             deselectAllBonuses();
             pendingTapBonusIndex = BONUS_IDX_UNDO;
             return true;

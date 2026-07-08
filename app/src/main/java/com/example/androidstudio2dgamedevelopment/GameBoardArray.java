@@ -344,6 +344,11 @@ public class GameBoardArray {
                 gameBoardContent[x][y] = snapshot[x][y];
     }
 
+    /** True if there is at least one saved board state that unrollBackup() could restore. */
+    public boolean hasUndoSnapshot() {
+        return !undoStack.isEmpty();
+    }
+
     public void backupGameBoardWithNextModification() {
         triggerBackupBeforeNextModification = true;
     }
