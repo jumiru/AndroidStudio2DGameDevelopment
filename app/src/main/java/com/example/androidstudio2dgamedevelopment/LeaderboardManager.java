@@ -41,7 +41,7 @@ public class LeaderboardManager {
                 .addOnFailureListener(onFailure(onError));
     }
 
-    /** Submits (or raises) the player's personal-best score under their anonymous UID. */
+    /** Submits a new score entry; every submission is its own row (same name/device can appear multiple times). */
     public void submitScore(String name, long score, Runnable onSuccess, Consumer<Exception> onError) {
         String trimmedName = name == null ? "" : name.trim();
         if (trimmedName.isEmpty()) trimmedName = "Anonym";
@@ -51,11 +51,12 @@ public class LeaderboardManager {
         ensureSignedIn(() -> {
             String uid = auth.getCurrentUser().getUid();
             Map<String, Object> data = new HashMap<>();
+            data.put("uid", uid);
             data.put("name", finalName);
             data.put("score", score);
-            data.put("updatedAt", FieldValue.serverTimestamp());
-            firestore.collection(COLLECTION).document(uid)
-                    .set(data)
+            data.put("createdAt", FieldValue.serverTimestamp());
+            firestore.collection(COLLECTION)
+                    .add(data)
                     .addOnSuccessListener(unused -> onSuccess.run())
                     .addOnFailureListener(onFailure(onError));
         }, onError);

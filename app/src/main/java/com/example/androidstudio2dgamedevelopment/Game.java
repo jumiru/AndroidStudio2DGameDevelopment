@@ -2,7 +2,9 @@ package com.example.androidstudio2dgamedevelopment;
 
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.content.ClipboardManager;
 import android.content.Context;
+import android.content.Intent;
 import android.content.SharedPreferences;
 import android.graphics.Canvas;
 import android.graphics.Color;
@@ -515,6 +517,14 @@ public class Game extends SurfaceView implements SurfaceHolder.Callback {
                 dialog.dismiss();
                 showResetHighscoreConfirmDialog();
             });
+            addMenuItem(root, ctx, "Debug-Status teilen", 0xFF63D88E, () -> {
+                dialog.dismiss();
+                shareDebugSnapshot();
+            });
+            addMenuItem(root, ctx, "Debug-Status einlesen", 0xFF63D88E, () -> {
+                dialog.dismiss();
+                showImportDebugSnapshotDialog();
+            });
 
             dialog.show();
             Button closeBtn = dialog.getButton(AlertDialog.BUTTON_NEGATIVE);
@@ -551,6 +561,86 @@ public class Game extends SurfaceView implements SurfaceHolder.Callback {
     private void showResetHighscoreConfirmDialog() {
         showConfirmDialog("Highscore zurücksetzen?", "Dein gespeicherter Highscore wird auf 0 gesetzt.",
                 "Zurücksetzen", gameBoard::resetAllHighscores);
+    }
+
+    /** Shares board, undo stack and bonus counters as plain text (e.g. via Messenger/Mail) for a bug report. */
+    private void shareDebugSnapshot() {
+        Context ctx = getContext();
+        if (!(ctx instanceof Activity)) return;
+        String snapshot = gameBoard.exportDebugSnapshot();
+        if (snapshot == null) {
+            Toast.makeText(ctx, "Debug-Status konnte nicht erstellt werden.", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        Intent sendIntent = new Intent(Intent.ACTION_SEND);
+        sendIntent.setType("text/plain");
+        sendIntent.putExtra(Intent.EXTRA_TEXT, snapshot);
+        ctx.startActivity(Intent.createChooser(sendIntent, "Debug-Status teilen"));
+    }
+
+    /** Lets the player paste a debug status shared via {@link #shareDebugSnapshot} to reproduce a bug 1:1. */
+    private void showImportDebugSnapshotDialog() {
+        Context ctx = getContext();
+        if (!(ctx instanceof Activity)) return;
+        ((Activity) ctx).runOnUiThread(() -> {
+            LinearLayout root = new LinearLayout(ctx);
+            root.setOrientation(LinearLayout.VERTICAL);
+            root.setPadding(dp(24), dp(16), dp(24), dp(8));
+            root.addView(buildDialogTitle(ctx, "Debug-Status einlesen"));
+
+            TextView hint = new TextView(ctx);
+            hint.setText("Fügt einen geteilten Debug-Status ein. Board, Undo-Verlauf und Boni werden übernommen " +
+                    "- der aktuelle Spielstand geht dabei verloren.");
+            hint.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f);
+            hint.setTextColor(0xFFCFD7EE);
+            LinearLayout.LayoutParams hintLP = new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+            hintLP.bottomMargin = dp(10);
+            hint.setLayoutParams(hintLP);
+            root.addView(hint);
+
+            EditText input = new EditText(ctx);
+            input.setHint("Hier einfügen...");
+            input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE);
+            input.setMinLines(4);
+            input.setMaxLines(8);
+            input.setTextColor(0xFFCFD7EE);
+            input.setHintTextColor(0xFF606880);
+
+            ClipboardManager clipboard = (ClipboardManager) ctx.getSystemService(Context.CLIPBOARD_SERVICE);
+            if (clipboard != null && clipboard.hasPrimaryClip()
+                    && clipboard.getPrimaryClipDescription() != null
+                    && clipboard.getPrimaryClipDescription().hasMimeType("text/plain")
+                    && clipboard.getPrimaryClip().getItemCount() > 0) {
+                CharSequence clip = clipboard.getPrimaryClip().getItemAt(0).getText();
+                if (clip != null && clip.toString().trim().startsWith("{")) input.setText(clip);
+            }
+            root.addView(input);
+
+            AlertDialog dialog = new AlertDialog.Builder(ctx)
+                    .setView(root)
+                    .setPositiveButton("Übernehmen", null)
+                    .setNegativeButton("Abbrechen", null)
+                    .create();
+            if (dialog.getWindow() != null) {
+                dialog.getWindow().setBackgroundDrawable(new ColorDrawable(0xFF16213A));
+            }
+            dialog.show();
+            Button negBtn = dialog.getButton(AlertDialog.BUTTON_NEGATIVE);
+            if (negBtn != null) negBtn.setTextColor(0xFFCFD7EE);
+            Button posBtn = dialog.getButton(AlertDialog.BUTTON_POSITIVE);
+            if (posBtn != null) {
+                posBtn.setTextColor(0xFF63D88E);
+                posBtn.setOnClickListener(v -> {
+                    if (gameBoard.importDebugSnapshot(input.getText().toString())) {
+                        dialog.dismiss();
+                        Toast.makeText(ctx, "Debug-Status geladen.", Toast.LENGTH_SHORT).show();
+                    } else {
+                        Toast.makeText(ctx, "Ungültiger oder nicht passender Debug-Status.", Toast.LENGTH_SHORT).show();
+                    }
+                });
+            }
+        });
     }
 
     /** Generic destructive-action confirmation, styled to match the dark dialog theme

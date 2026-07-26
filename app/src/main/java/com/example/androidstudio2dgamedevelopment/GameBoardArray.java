@@ -273,18 +273,38 @@ public class GameBoardArray {
      * cell's own value; if the cell holds a joker, it borrows the value of an adjacent
      * real (non-empty, non-joker) tile instead, since a lone joker has no value of its
      * own. Returns -1 if the cell is a joker with no real neighbor to attach to.
+     *
+     * A joker can border several *different* real values at once (e.g. pushed next to
+     * a 3-group on one side and an unrelated single tile on another). Picking whichever
+     * neighbor happens to be scanned first would silently hide the bigger, actually
+     * mergeable group, so every distinct neighboring value is tried and the one whose
+     * resulting merge group is largest wins.
      */
     public int effectiveMergeValue(int x, int y) {
         int seedValue = gameBoardContent[x][y];
         if (seedValue != JOKER_VALUE) return seedValue;
         int[][] deltas = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
+        int bestValue = -1;
+        int bestSize = -1;
         for (int[] d : deltas) {
             int nx = x + d[0], ny = y + d[1];
             if (nx < 0 || nx >= width || ny < 0 || ny >= height) continue;
             int v = gameBoardContent[nx][ny];
-            if (v != -1 && v != JOKER_VALUE) return v;
+            if (v == -1 || v == JOKER_VALUE) continue;
+            int size = mergeGroupSizeFor(x, y, v);
+            if (size > bestSize) {
+                bestSize = size;
+                bestValue = v;
+            }
         }
-        return -1;
+        return bestValue;
+    }
+
+    private int mergeGroupSizeFor(int x, int y, int mergeValue) {
+        Set<Coord> group = new TreeSet<>();
+        group.add(new Coord(x, y));
+        findMergeGroupDFS(x, y, mergeValue, group);
+        return group.size();
     }
 
     public boolean containsJoker() {
@@ -382,10 +402,17 @@ public class GameBoardArray {
         return result;
     }
 
-    /** Replaces the undo stack with previously persisted snapshots (most recent first). */
+    /**
+     * Replaces the undo stack with previously persisted snapshots (most recent first).
+     * Capped at MAX_UNDO_DEPTH like the normal push path - legitimate saves are always
+     * within that limit already, but a debug snapshot pasted from arbitrary text isn't
+     * guaranteed to be.
+     */
     public void importUndoStack(List<int[][]> snapshots) {
         undoStack.clear();
-        for (int[][] snapshot : snapshots) {
+        int limit = Math.min(snapshots.size(), MAX_UNDO_DEPTH);
+        for (int i = 0; i < limit; i++) {
+            int[][] snapshot = snapshots.get(i);
             int[][] copy = new int[width][height];
             for (int y = 0; y < height; y++)
                 for (int x = 0; x < width; x++)
