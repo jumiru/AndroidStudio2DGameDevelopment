@@ -62,20 +62,32 @@ public class LeaderboardManager {
         }, onError);
     }
 
-    /** Fetches the top {@code limit} scores, ordered highest first. */
+    /** How many raw docs to scan (ordered by score) when hunting for {@code limit} distinct players. */
+    private static final int FETCH_SCAN_MULTIPLIER = 20;
+
+    /**
+     * Fetches the top {@code limit} scores, ordered highest first, with each player (by uid)
+     * appearing only once at their personal best score. Submissions still create one doc per
+     * play, so this dedupes client-side by scanning a larger batch ordered by score.
+     */
     public void fetchTop(int limit, Consumer<List<LeaderboardEntry>> onResult, Consumer<Exception> onError) {
         firestore.collection(COLLECTION)
                 .orderBy("score", Query.Direction.DESCENDING)
-                .limit(limit)
+                .limit((long) limit * FETCH_SCAN_MULTIPLIER)
                 .get()
                 .addOnSuccessListener(snapshot -> {
                     List<LeaderboardEntry> entries = new ArrayList<>();
+                    java.util.Set<String> seenUids = new java.util.HashSet<>();
                     for (QueryDocumentSnapshot doc : snapshot) {
+                        if (entries.size() >= limit) break;
                         String name = doc.getString("name");
                         Long score = doc.getLong("score");
-                        if (name != null && score != null) {
-                            entries.add(new LeaderboardEntry(name, score));
-                        }
+                        String uid = doc.getString("uid");
+                        if (name == null || score == null) continue;
+                        // Docs are ordered by score desc, so the first doc seen per uid is that
+                        // player's best score; skip any later, lower-scoring docs from them.
+                        if (uid != null && !seenUids.add(uid)) continue;
+                        entries.add(new LeaderboardEntry(name, score));
                     }
                     onResult.accept(entries);
                 })
