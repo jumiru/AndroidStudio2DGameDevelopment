@@ -157,11 +157,13 @@ public class GameBoard {
     private static final int SHUFFLE_REDISTRIBUTE_DURATION = 20;
     private static final float SHUFFLE_DRAWOUT_LIFT_RATIO = 1.1f;
     private static final float SHUFFLE_PILE_JITTER_RATIO = 0.16f;
-    // The shuffle bonus arranges only a handful of ready-to-merge clusters of exactly
-    // MIN_COMBO_SIZE (never touching each other), and leaves the rest randomly placed.
-    // Keeping this low avoids chain reactions that blow through many levels at once.
-    private static final int SHUFFLE_MIN_CLUSTERS = 1;
-    private static final int SHUFFLE_MAX_CLUSTERS = 2;
+    // The shuffle bonus arranges ready-to-merge clusters of exactly MIN_COMBO_SIZE (never
+    // touching each other): one per value with enough stones, a second one for values with
+    // at least twice as many, capped at SHUFFLE_MAX_CLUSTERS. The rest is placed randomly,
+    // but kept from extending a cluster or chaining with its merge result, so the clusters
+    // don't cascade through many levels at once.
+    private static final int SHUFFLE_MAX_CLUSTERS = 5;
+    private static final int SHUFFLE_MAX_CLUSTERS_PER_VALUE = 2;
     private static final int BONUS_AWARD_AMOUNT = 1;
     private static final double BONUS_COUNT_DAMPING = 0.5d;
     private static final int   HUD_FLIP_DURATION    = 18;
@@ -4379,9 +4381,10 @@ public class GameBoard {
     }
 
     // Assigns each stone (values.get(i)/positions.get(i)) a final board cell. Up to
-    // SHUFFLE_CLUSTER_PERCENT of the stones are grouped into adjacent clusters of exactly
-    // MIN_COMBO_SIZE so the shuffle reliably sets up a few merges; the remaining stones are
-    // placed on the leftover cells at random so the whole board can't clear at once.
+    // SHUFFLE_MAX_CLUSTERS groups of exactly MIN_COMBO_SIZE equal stones are placed as
+    // adjacent clusters so the shuffle reliably sets up several merges; the remaining stones
+    // are placed on the leftover cells at random, except that cells bordering a cluster never
+    // get a stone that would enlarge it or chain with its merge result.
     private void computeShuffleFinalPositions(java.util.List<Integer> values, java.util.List<int[]> positions,
                                                int[] finalX, int[] finalY) {
         int n = values.size();
@@ -4394,15 +4397,24 @@ public class GameBoard {
             byValue.computeIfAbsent(values.get(i), k -> new java.util.ArrayList<>()).add(i);
         }
 
+        // One cluster slot per value with enough stones (in random order), followed by the
+        // second slots of values with enough stones for two, so the cap cuts the repeats first.
         java.util.List<Integer> candidateValues = new java.util.ArrayList<>();
-        for (java.util.Map.Entry<Integer, java.util.List<Integer>> e : byValue.entrySet()) {
-            if (e.getValue().size() >= MIN_COMBO_SIZE) candidateValues.add(e.getKey());
+        for (int round = 1; round <= SHUFFLE_MAX_CLUSTERS_PER_VALUE; round++) {
+            java.util.List<Integer> roundValues = new java.util.ArrayList<>();
+            for (java.util.Map.Entry<Integer, java.util.List<Integer>> e : byValue.entrySet()) {
+                if (e.getKey() == GameBoardArray.JOKER_VALUE) continue;
+                if (e.getValue().size() >= MIN_COMBO_SIZE * round) roundValues.add(e.getKey());
+            }
+            java.util.Collections.shuffle(roundValues, rand);
+            candidateValues.addAll(roundValues);
         }
-        java.util.Collections.shuffle(candidateValues, rand);
 
-        int targetClusters = Math.min(candidateValues.size(),
-                SHUFFLE_MIN_CLUSTERS + rand.nextInt(SHUFFLE_MAX_CLUSTERS - SHUFFLE_MIN_CLUSTERS + 1));
+        int targetClusters = Math.min(candidateValues.size(), SHUFFLE_MAX_CLUSTERS);
 
+        // Value of the cluster each cluster cell belongs to, used to keep the random fill
+        // from extending a cluster or chaining with its merge result.
+        java.util.Map<Long, Integer> clusterValueByKey = new java.util.HashMap<>();
         boolean[] assigned = new boolean[n];
         // Cells occupied by already-placed clusters plus their neighbors, so the next
         // cluster never ends up touching one already placed (which could merge them
@@ -4438,6 +4450,7 @@ public class GameBoard {
                 assigned[idx] = true;
             }
             for (int[] c : region) {
+                clusterValueByKey.put(shufflePosKey(c[0], c[1]), val);
                 blockedForNextCluster.add(shufflePosKey(c[0], c[1]));
                 for (int[] d : adjacency) {
                     blockedForNextCluster.add(shufflePosKey(c[0] + d[0], c[1] + d[1]));
@@ -4448,11 +4461,45 @@ public class GameBoard {
 
         java.util.List<Integer> remainingIndices = new java.util.ArrayList<>();
         for (int i = 0; i < n; i++) if (!assigned[i]) remainingIndices.add(i);
+        java.util.Collections.shuffle(remainingIndices, rand);
+
+        // Forbidden values per leftover cell bordering a cluster: the cluster's own value
+        // (would enlarge it), its merge result (v + 2, would chain right after the merge)
+        // and the joker (matches anything).
+        java.util.Map<Long, java.util.Set<Integer>> forbiddenByKey = new java.util.HashMap<>();
+        for (java.util.Map.Entry<Long, Integer> e : clusterValueByKey.entrySet()) {
+            int cx = shuffleKeyX(e.getKey());
+            int cy = shuffleKeyY(e.getKey());
+            int v = e.getValue();
+            for (int[] d : adjacency) {
+                long neighbor = shufflePosKey(cx + d[0], cy + d[1]);
+                if (!availableKeys.contains(neighbor)) continue;
+                java.util.Set<Integer> forbidden =
+                        forbiddenByKey.computeIfAbsent(neighbor, k -> new java.util.HashSet<>());
+                forbidden.add(v);
+                forbidden.add(v + 2);
+                forbidden.add(GameBoardArray.JOKER_VALUE);
+            }
+        }
+
+        // Fill the constrained cells first, while there is still the most choice of stones.
         java.util.List<Long> remainingKeys = new java.util.ArrayList<>(availableKeys);
         java.util.Collections.shuffle(remainingKeys, rand);
-        for (int i = 0; i < remainingIndices.size(); i++) {
-            int idx = remainingIndices.get(i);
-            long key = remainingKeys.get(i);
+        java.util.Collections.sort(remainingKeys,
+                (a, b) -> Boolean.compare(!forbiddenByKey.containsKey(a), !forbiddenByKey.containsKey(b)));
+
+        for (long key : remainingKeys) {
+            java.util.Set<Integer> forbidden = forbiddenByKey.get(key);
+            int pick = 0;
+            if (forbidden != null) {
+                for (int i = 0; i < remainingIndices.size(); i++) {
+                    if (!forbidden.contains(values.get(remainingIndices.get(i)))) {
+                        pick = i;
+                        break;
+                    }
+                }
+            }
+            int idx = remainingIndices.remove(pick);
             finalX[idx] = shuffleKeyX(key);
             finalY[idx] = shuffleKeyY(key);
         }
