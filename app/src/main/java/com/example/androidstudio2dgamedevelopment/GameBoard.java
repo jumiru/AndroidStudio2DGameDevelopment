@@ -3738,6 +3738,10 @@ public class GameBoard {
          if (!suppressJokerRewardsThisChain && targetPositionX == jokerFieldX && targetPositionY == jokerFieldY) {
              triggerJokerField();
          }
+         // Spawning the diamond (joker stone) also grants one extra random bonus.
+         if (gameBoardArray.get(targetPositionX, targetPositionY) == GameBoardArray.JOKER_VALUE) {
+             awardSingleRandomBonus();
+         }
 
          long comboScore = calculateComboScore(mergeGroup.size());
          if (gameBoardArrayValueAfterMotion > getCurrentMaxSpawnIndex()) {
@@ -4003,6 +4007,18 @@ public class GameBoard {
         bonusWin2 = getWeightedRandomBonusIndex();
         addBonusCount(bonusWin2, BONUS_AWARD_AMOUNT);
         startBonusAnimation();
+    }
+
+    private void awardSingleRandomBonus() {
+        int bonus = getWeightedRandomBonusIndex();
+        addBonusCount(bonus, BONUS_AWARD_AMOUNT);
+        // Queue behind a running bonus animation instead of cutting it off.
+        if (animateBonusCounter > 0 && bonusWin2 < 0) {
+            bonusWin2 = bonus;
+        } else {
+            bonusWin = bonus;
+            startBonusAnimation();
+        }
     }
 
     private long effectiveScore() { return score + spentOnBonuses; }
